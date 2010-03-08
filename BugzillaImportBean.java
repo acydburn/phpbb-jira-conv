@@ -308,7 +308,10 @@ public class BugzillaImportBean
 		cryptedPasswords = true;
 		profilePS = conn.prepareStatement("SELECT user_id, username, user_email, username as realname FROM community_users WHERE user_id = ?");
 
-        commentPS = conn.prepareStatement("SELECT thetext, who, bug_when FROM longdescs WHERE bug_id = ? ORDER BY bug_when ASC");
+		// Get comment by ticket id
+		// We get all ticket posts (and exclude the one for the ticket itself later)
+		// We do not import private tickets
+        commentPS = conn.prepareStatement("SELECT * FROM trackers_post WHERE ticket_id = ? AND post_private = 0 ORDER BY post_timestamp ASC");
     }
 
     private void closePreparedStatements() throws SQLException
@@ -671,36 +674,52 @@ public class BugzillaImportBean
         wfCurrentStep.store();
     }
 
+	// DONE
     private void createCommentAndDescription(final int bug_id, final GenericValue issue) throws Exception
     {
-        String description = null;
+		// Get description and description id for this ticket
+		String description = null;
+		int postid = 0;
+
+        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT p.* FROM trackers_ticket as t, trackers_post as p  WHERE t.ticket_id = ? AND p.post_id = t.post_id");
+        preparedStatement.setInt(1, bug_id);
+
+        final DescriptionResultSet resultSet = preparedStatement.executeQuery();
+        if (DescriptionResultSet.next())
+        {
+			// @todo introduce new column for HTML? I do not think JIRA is able to parse BBCode. ;)
+			description = DescriptionResultSet.getString('post_text');
+			postid = DescriptionResultSet.getInt('post_id');
+		}
+		DescriptionResultSet.close();
+
         commentPS.setInt(1, bug_id);
 
         final ResultSet resultSet = commentPS.executeQuery();
         while (resultSet.next())
         {
-            // the description entry for each bug is JIRA's description, the rest goes into comments.
-            if (resultSet.isFirst())
-            {
-                description = resultSet.getString("thetext");
-            }
-            else
-            {
-                final User user = getUser(resultSet.getInt("who"));
+			// Skip if the comment is the original description post_id
+			if (resultSet.getInt('post_id') == postid)
+			{
+				
+			}
+			else
+			{
+                final User user = getUser(resultSet.getInt("user_id"));
 
-                // check permissions first
+                /* check permissions first
                 if (!permissionManager.hasPermission(Permissions.COMMENT_ISSUE, issue, user))
                 {
                     log("You (" + user.getFullName() + ") do not have permission to comment on an issue in project: " + projectManager.getProjectObj(
                         issue.getLong("project")).getName());
                 }
                 else
-                {
+                {*/
                     final String author = user.getName();
-                    final Date timePerformed = resultSet.getTimestamp("bug_when");
-                    commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("thetext"), null, null, timePerformed,
+                    final Date timePerformed = resultSet.getTimestamp("post_timestamp);
+                    commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text"), null, null, timePerformed,
                         timePerformed, false, false);
-                }
+//                }
             }
         }
         resultSet.close();
