@@ -105,7 +105,7 @@ import java.util.Set;
 public class BugzillaImportBean
 {
     private static final Logger log4jLog = Logger.getLogger(BugzillaImportBean.class);
-    private static final String BUGZILLA_CHANGE_ITEM_FIELD = "Bugzilla Import Key";
+    private static final String BUGZILLA_CHANGE_ITEM_FIELD = "phpBB Import Key";
     private final IssueIndexManager indexManager;
     private final GenericDelegator genericDelegator;
     private final ProjectManager projectManager;
@@ -149,7 +149,6 @@ public class BugzillaImportBean
     private boolean reuseExistingUsers;
     private boolean workHistory;
     private final Map projectToBugzillaIdMap = new HashMap();
-    private boolean oldBugzilla; // Whether Bugzilla is 2.16 or earlier
     private boolean onlyNewIssues;
 
     public static final String BUGZILLA_ID_TYPE = "importid";
@@ -244,7 +243,6 @@ public class BugzillaImportBean
 
             final Connection conn = connectionBean.getConnection();
             createPreparedStatements(conn);
-            oldBugzilla = isOldBugzilla(conn); // Set flag if using Bugzilla 2.16 or earlier
 
             ImportUtils.setSubvertSecurityScheme(true);
             if (reindex)
@@ -302,7 +300,8 @@ public class BugzillaImportBean
     {
         componentPS = conn.prepareStatement("select name from components where id = ?");
         productPS = conn.prepareStatement("select name from products where id = ?");
-        if (tableHasColumn(conn, "profiles", "cryptpassword"))
+
+		/*if (tableHasColumn(conn, "profiles", "cryptpassword"))
         {
             cryptedPasswords = true;
             profilePS = conn.prepareStatement("SELECT userid, login_name, realname FROM profiles where userid = ?");
@@ -312,6 +311,12 @@ public class BugzillaImportBean
             cryptedPasswords = false;
             profilePS = conn.prepareStatement("SELECT userid, login_name, realname, password FROM profiles where userid = ?");
         }
+		*/
+
+		// Prepared Statement for profiles
+		cryptedPasswords = true;
+		profilePS = conn.prepareStatement("SELECT user_id, username, user_email, username as realname FROM community_users WHERE user_id = ?");
+
         commentPS = conn.prepareStatement("SELECT thetext, who, bug_when FROM longdescs WHERE bug_id = ? ORDER BY bug_when ASC");
     }
 
@@ -344,14 +349,7 @@ public class BugzillaImportBean
         previouslyImportedKeys = retrieveImportedIssues();
 
         String sql = "SELECT * FROM bugs where ";
-        if (oldBugzilla)
-        {
-            sql += "product in (" + selectedProjects + ")";
-        }
-        else
-        {
-            sql += whereSelectedProjectClauseForVersionsAndComponents();
-        }
+        sql += whereSelectedProjectClauseForVersionsAndComponents();
 
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
@@ -753,65 +751,6 @@ public class BugzillaImportBean
         ChangeLogUtils.createChangeGroup(importer, issue, issue, changeItems, true);
     }
 
-    private void createVotes(final Connection conn) throws SQLException
-    {
-        log("\n\nImporting Votes");
-
-        int count = 0;
-
-        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT who FROM votes where bug_id = ?");
-
-        final Iterator bugzillaBugIdIter = previouslyImportedKeys.keySet().iterator();
-
-        // for each imported bug..
-        while (bugzillaBugIdIter.hasNext())
-        {
-            final Integer bugzillaBugId = (Integer) bugzillaBugIdIter.next();
-
-            // preparedStatement.setInt(1, bugzillaUserId.intValue());
-            preparedStatement.setInt(1, bugzillaBugId.intValue());
-
-            final ResultSet rs = preparedStatement.executeQuery();
-
-            // for each vote on an imported bug..
-            while (rs.next())
-            {
-                try
-                {
-                    final User voter = getUser(rs.getInt("who")); // find or create the voter
-                    final Long jiraBugId = (Long) previouslyImportedKeys.get(bugzillaBugId);
-                    final GenericValue issue = issueManager.getIssue(jiraBugId);
-                    final String resolution = issue.getString("resolution");
-                    issue.setString("resolution", null); // hack to import votes on 'resolved' issues. JRA-6440
-                    try
-                    {
-                        if (!voteManager.addVote(voter, issue))
-                        {
-                            log("Failed to import vote on " + issue.getString("key"));
-                        }
-                        else
-                        {
-                            count++;
-                        }
-                    }
-                    finally
-                    {
-                        issue.setString("resolution", resolution);
-                    }
-                }
-                catch (final Throwable t)
-                {
-                    log("Failed to import vote for bugid=" + bugzillaBugId);
-                    t.printStackTrace();
-                }
-            }
-        }
-
-        //        }
-        ImportUtils.closePS(preparedStatement);
-        log(count + " votes imported from Bugzilla.");
-    }
-
     private void createWatchers(final Connection conn) throws SQLException
     {
         log("\n\nImporting Watchers");
@@ -891,7 +830,7 @@ public class BugzillaImportBean
             {
                 // lookup the component lead (only available in Enterprise)
                 componentLead = getComponentLead(resultSet.getInt("initialowner"));
-                component = resultSet.getString((oldBugzilla ? "value" : "name"));
+                component = resultSet.getString("name");
             }
             catch (final SQLException ex)
             {
@@ -928,7 +867,7 @@ public class BugzillaImportBean
         final ResultSet componentLeadResultSet = profilePS.executeQuery();
         if (componentLeadResultSet.next())
         {
-            componentLead = componentLeadResultSet.getString("login_name");
+            componentLead = componentLeadResultSet.getString("username");
         }
         return componentLead;
     }
@@ -1052,14 +991,7 @@ public class BugzillaImportBean
         int count = 0;
 
         String sql;
-        if (oldBugzilla)
-        {
-            sql = "select product, target_milestone from bugs where product in (" + selectedProjects + ") group by product, target_milestone";
-        }
-        else
-        {
-            sql = "select product_id, target_milestone from bugs where " + whereSelectedProjectClauseForVersionsAndComponents() + " group by product_id, target_milestone";
-        }
+        sql = "select product_id, target_milestone from bugs where " + whereSelectedProjectClauseForVersionsAndComponents() + " group by product_id, target_milestone";
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
 
@@ -1092,15 +1024,7 @@ public class BugzillaImportBean
      */
     private String whereSelectedProjectClauseForVersionsAndComponents()
     {
-        if (oldBugzilla)
-        {
-            return " program in (" + selectedProjects + ") ";
-        }
-        else
-        {
-            return " product_id in (" + commaSeparate(projectToBugzillaIdMap.values()) + ") ";
-        }
-
+        return " project_id in (" + commaSeparate(projectToBugzillaIdMap.values()) + ") ";
     }
 
     /**
@@ -1155,7 +1079,8 @@ public class BugzillaImportBean
         }
     }
 
-    private void createProjects(final String[] projectNames, final Connection conn) throws SQLException
+	// DONE
+	private void createProjects(final String[] projectNames, final Connection conn) throws SQLException
     {
         int count = 0;
         log("\n\nImporting project(s) " + selectedProjects);
@@ -1163,9 +1088,8 @@ public class BugzillaImportBean
         PreparedStatement preparedStatement;
         ResultSet resultSet;
 
-        final String productColName = getProductColumnName();
         final String names = ImportUtils.getSQLTokens(projectNames);
-        preparedStatement = conn.prepareStatement("Select * from products where " + productColName + " in (" + names + ")");
+        preparedStatement = conn.prepareStatement("Select * from trackers_project where project_name in (" + names + ") AND tracker_id = 3");
 
         for (int i = 0; i < projectNames.length; i++)
         {
@@ -1176,32 +1100,26 @@ public class BugzillaImportBean
         resultSet = preparedStatement.executeQuery();
         while (resultSet.next())
         {
-            final String product = resultSet.getString(productColName);
-            if (!oldBugzilla)
-            {
-                projectToBugzillaIdMap.put(product, new Integer(resultSet.getInt("id")));
-            }
+            final String product = resultSet.getString("project_name");
+            projectToBugzillaIdMap.put(product, new Integer(resultSet.getInt("project_id")));
 
             log("Importing Project: " + product);
 
-            final String description = resultSet.getString("description");
-            final boolean created = createProject(product, description);
+            final String description = resultSet.getString("project_description");
+			final String productKey = resultSet.getString("project_name_unix");
+
+            final boolean created = createProject(product, productKey, description);
 
             if (created)
             {
                 count++;
             }
         }
-        log(count + " projects imported from Bugzilla.");
+        log(count + " projects imported from phpBB.");
         ImportUtils.closePS(preparedStatement);
     }
 
-    private String getProductColumnName()
-    {
-        return (oldBugzilla ? "product" : "name");
-    }
-
-    private boolean createProject(final String product, final String description)
+    private boolean createProject(final String product, final String productKey, final String description)
     {
         if (product == null)
         {
@@ -1221,7 +1139,7 @@ public class BugzillaImportBean
             GenericValue project;
             try
             {
-                project = ProjectUtils.createProject(EasyMap.build("key", bugzillaMappingBean.getProjectKey(product), "lead",
+                project = ProjectUtils.createProject(EasyMap.build("key", productKey, "lead",
                     bugzillaMappingBean.getProjectLead(product), "name", product, "description", description));
 
                 //Add the default permission scheme for this project
@@ -1261,24 +1179,24 @@ public class BugzillaImportBean
         String fullname;
         while (resultSet.next())
         {
-            // user name is bugzilla's email/login and changed into lower case
-            loginNameEmail = getUsernameFromBugzillaProfile(resultSet);
+			// Username is our phpBB Username...
+			loginNameEmail = getUsernameFromBugzillaProfile(resultSet);
             fullname = TextUtils.noNull(resultSet.getString("realname")).trim();
 
-            final int userid = resultSet.getInt("userid");
+            final int user_id = resultSet.getInt("user_id");
 
             boolean created;
             if (cryptedPasswords)
             {
                 //Newer versions of Bugzilla don't use the password field, but instead use
                 //a hash.  We will ignore the passwords in this case
-                created = createUser(loginNameEmail, fullname, userid, null);
+                created = createUser(loginNameEmail, fullname, user_id, null);
 
             }
             else
             {
                 final String password = TextUtils.noNull(resultSet.getString("password")).trim();
-                created = createUser(loginNameEmail, fullname, userid, password);
+                created = createUser(loginNameEmail, fullname, user_id, password);
             }
             if (created)
             {
@@ -1299,10 +1217,11 @@ public class BugzillaImportBean
      */
     protected String getUsernameFromBugzillaProfile(final ResultSet bugzillaProfileResultSet) throws SQLException
     {
-        return TextUtils.noNull(bugzillaProfileResultSet.getString("login_name")).toLowerCase().trim();
+//        return TextUtils.noNull(bugzillaProfileResultSet.getString("username")).toLowerCase().trim();
+		return bugzillaProfileResultSet.getString("username");
 
         // Alternatively, use the first part ('joe' in 'joe@company.com')
-        //        String name = bugzillaProfileResultSet.getString("login_name");
+        //        String name = bugzillaProfileResultSet.getString("username");
         //        name = TextUtils.noNull(name).trim();
         //        int i = name.indexOf("@");
         //        if (i != -1) name = name.substring(0, i);
@@ -1681,38 +1600,6 @@ public class BugzillaImportBean
         return user;
     }
 
-    private String getProjectKey(final String name, int keylength) throws GenericEntityException
-    {
-        String potentialKey;
-        if (name.length() < keylength)
-        {
-            potentialKey = name + generatePaddingString(keylength - name.length());
-        }
-        else
-        {
-            potentialKey = name.substring(0, keylength);
-        }
-
-        if (projectManager.getProjectObjByKey(potentialKey) != null)
-        {
-            return getProjectKey(name, ++keylength);
-        }
-        else
-        {
-            return potentialKey;
-        }
-    }
-
-    public String getProjectKey(final String name) throws GenericEntityException
-    {
-        final Project project = projectManager.getProjectObjByName(name);
-        if (project == null)
-        {
-            return getProjectKey(name.toUpperCase(), 3); //minimum key length of 3
-        }
-        return project.getKey();
-    }
-
     private String generatePaddingString(final int length)
     {
         final char[] padarray = new char[length];
@@ -1769,47 +1656,24 @@ public class BugzillaImportBean
         }
     }
 
-    /**
-     * By examining the schema, determines if we're importing from <=2.16 or 2.17+
-     *
-     * @param conn connection
-     * @return true if connecting to Bugzilla 2.16 or lower
-     * @throws SQLException if cannot read from the database
-     */
-    public static boolean isOldBugzilla(final Connection conn) throws SQLException
-    {
-        if (tableHasColumn(conn, "products", "product"))
-        {
-            // Bugzilla 2.16 (and probably earlier)
-            return true;
-        }
-        else if (tableHasColumn(conn, "products", "name"))
-        {
-            // Bugzilla 2.17 ('product' was split into 'id' and 'name')
-            return false;
-        }
-
-        throw new RuntimeException(
-            "Could not find 'product' or 'name' column for Bugzilla database table 'products'." + "Unknown Bugzilla version.  Please mail Atlassian support with details of your database.");
-    }
-
     public String getImportLog()
     {
         return importLog.toString();
     }
 
+	// DONE
     public static List getAllBugzillaProjects(BugzillaConnectionBean connectionBean) throws java.sql.SQLException
     {
         PreparedStatement preparedStatement = null;
         try
         {
-            String nameColoumn = isOldBugzilla(connectionBean.getConnection()) ? "product" : "name";
-            preparedStatement = connectionBean.getConnection().prepareStatement("Select " + nameColoumn + " from products order by " + nameColoumn);
+            preparedStatement = connectionBean.getConnection().prepareStatement("Select project_name from trackers_project where tracker_id = 3 order by project_name");
             ResultSet resultSet = preparedStatement.executeQuery();
             List projects = new ArrayList();
             while (resultSet.next())
             {
-                String product = resultSet.getString(nameColoumn);
+				// Solved initial bug in Bugzilla importer - column_name wrong
+                String product = resultSet.getString("project_name");
                 projects.add(product);
             }
             return projects;
@@ -1925,8 +1789,6 @@ public class BugzillaImportBean
          */
         String JIRA_BUG_ISSUE_TYPE_ID = "1";
 
-        public String getProjectKey(String project);
-
         public String getPriority(String originalPriority);
 
         public String getResolution(String originalResolution);
@@ -2018,109 +1880,128 @@ public class BugzillaImportBean
         {
             return (String) wfStatusMap.get(originalWorkflowStatus);
         }
-
-        public abstract String getProjectKey(String project);
     }
 
-    /**
-     * responsible for getting a Set of user names
-     */
-    private class UserNameCollator
-    {
-        private final String projectIds;
-        private final Connection conn;
+/**
+* responsible for getting a Set of user names
+*/
+private class UserNameCollator
+{
+	private final String projectIds;
+	private final Connection conn;
 
-        UserNameCollator(final String[] projectNames, final Connection conn) throws SQLException
-        {
-            this.conn = conn;
-            PreparedStatement preparedStatement = null;
-            ResultSet rs = null;
-            try
-            {
-                final String productColName = getProductColumnName();
-                preparedStatement = conn.prepareStatement("Select id from products where " + productColName + " in (" + ImportUtils.getSQLTokens(projectNames) + ")");
-                for (int i = 0; i < projectNames.length; i++)
-                {
-                    final String projectName = projectNames[i];
-                    preparedStatement.setString(i + 1, projectName);
-                }
+	// DONE
+	UserNameCollator(final String[] projectNames, final Connection conn) throws SQLException
+	{
+		this.conn = conn;
+		PreparedStatement preparedStatement = null;
+		ResultSet rs = null;
+		try
+		{
+			preparedStatement = conn.prepareStatement("Select project_id from trackers_project where project_name in (" + ImportUtils.getSQLTokens(projectNames) + ") AND tracker_id = 3");
+			for (int i = 0; i < projectNames.length; i++)
+			{
+				final String projectName = projectNames[i];
+				preparedStatement.setString(i + 1, projectName);
+			}
 
-                rs = preparedStatement.executeQuery();
-                final StringBuffer buffer = new StringBuffer();
-                int i = 0;
-                while (rs.next())
-                {
-                    if (i++ > 0)
-                    {
-                        buffer.append(", ");
-                    }
-                    buffer.append(rs.getLong(1));
-                }
-                projectIds = buffer.toString();
-            }
-            finally
-            {
-                ImportUtils.close(preparedStatement, rs);
-            }
-        } // end ctor
+			rs = preparedStatement.executeQuery();
+			final StringBuffer buffer = new StringBuffer();
+			int i = 0;
+			while (rs.next())
+			{
+				if (i++ > 0)
+				{
+					buffer.append(", ");
+				}
+				buffer.append(rs.getLong(1));
+			}
+			projectIds = buffer.toString();
+		}
+		finally
+		{
+			ImportUtils.close(preparedStatement, rs);
+		}
+	} // end ctor
 
-        public Set getAllUsers() throws SQLException
-        {
-            final Set result = new HashSet();
+	// DONE
+	public Set getAllUsers() throws SQLException
+	{
+		final Set result = new HashSet();
 
-            // issue reporters
-            result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs AS b ON ( b.reporter = prof.userid) JOIN products AS p ON (b.product_id = p.id) WHERE p.id IN (" + projectIds + ") GROUP BY 1"));
+		/*issue reporters
+		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs AS b ON ( b.reporter = prof.userid) JOIN products AS p ON (b.product_id = p.id) WHERE p.id IN (" + projectIds + ") GROUP BY 1"));
 
-            // issue assignees
-            result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs AS b ON ( b.assigned_to = prof.userid) JOIN products AS p ON (b.product_id = p.id) WHERE p.id IN (" + projectIds + ") GROUP BY 1"));
+		// issue assignees
+		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs AS b ON ( b.assigned_to = prof.userid) JOIN products AS p ON (b.product_id = p.id) WHERE p.id IN (" + projectIds + ") GROUP BY 1"));
 
-            // commenters
-            result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN longdescs AS l ON ( l.who = prof.userid) JOIN bugs AS b ON (l.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
+		// commenters
+		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN longdescs AS l ON ( l.who = prof.userid) JOIN bugs AS b ON (l.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
 
-            // voters
-            result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN votes AS v ON ( v.who = prof.userid) JOIN bugs AS b ON (v.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
+		// voters
+//		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN votes AS v ON ( v.who = prof.userid) JOIN bugs AS b ON (v.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
 
-            // watchers
-            result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN cc AS c ON ( c.who = prof.userid) JOIN bugs AS b ON (c.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
+		// watchers
+		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN cc AS c ON ( c.who = prof.userid) JOIN bugs AS b ON (c.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
 
-            // attachers
-            result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN attachments AS a ON ( a.submitter_id = prof.userid) JOIN bugs AS b ON (a.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
+		// attachers
+		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN attachments AS a ON ( a.submitter_id = prof.userid) JOIN bugs AS b ON (a.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
 
-            // workers
-            result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs_activity AS ba ON ( ba.who = prof.userid) JOIN bugs AS b ON (ba.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE ba.fieldid = 45 AND p.id IN (" + projectIds + ") GROUP BY 1"));
+		// workers
+		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs_activity AS ba ON ( ba.who = prof.userid) JOIN bugs AS b ON (ba.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE ba.fieldid = 45 AND p.id IN (" + projectIds + ") GROUP BY 1"));
+*/
 
-            return result;
-        }
+		// Ticket History
+		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_history AS h ON (h.user_id = u.user_id) JOIN trackers_ticket as t ON (h.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
-        private Set getUsers(final String sql) throws SQLException
-        {
-            PreparedStatement ps = null;
-            ResultSet rs = null;
-            try
-            {
-                ps = conn.prepareStatement(sql);
-                rs = ps.executeQuery();
-                final Set result = new HashSet();
-                while (rs.next())
-                {
-                    result.add(new ExternalUser(rs.getString(1), rs.getString(2), rs.getString(1)));
-                }
-                return result;
-            }
-            finally
-            {
-                ImportUtils.close(ps, rs);
-            }
-        }
-    }
+		// Trackers Posts
+		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_post AS p ON (p.user_id = u.user_id) JOIN trackers_ticket as t ON (p.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
-    /**
-     * Returns an unmodifiable set of issue keys that have summaries longer that acceptable by JIRA
-     *
-     * @return an unmodifiable set of issue keys as Strings
-     */
-    public Set /* <String> */getTruncSummaryIssueKeys()
-    {
-        return Collections.unmodifiableSet(truncSummaryIssueKeys);
-    }
+		// Watchers/Project
+		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_project_watch AS pw ON (pw.user_id = u.user_id) WHERE pw.project_id IN (" + projectIds + ") GROUP BY 1"));
+
+		// Watchers/Ticket
+		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_ticket_watch AS tw ON (tw.user_id = u.user_id) JOIN trackers_ticket as t ON (tw.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+		
+		// ticket reporters
+		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_ticket AS t ON (t.user_id = u.user_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+
+		// Ticket assignees
+		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_ticket AS t ON (t.assigned_user = u.user_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+
+
+		return result;
+	}
+
+	private Set getUsers(final String sql) throws SQLException
+	{
+		PreparedStatement ps = null;
+		ResultSet rs = null;
+		try
+		{
+			ps = conn.prepareStatement(sql);
+			rs = ps.executeQuery();
+			final Set result = new HashSet();
+			while (rs.next())
+			{
+				result.add(new ExternalUser(rs.getString(1), rs.getString(2), rs.getString(1)));
+			}
+			return result;
+		}
+		finally
+		{
+			ImportUtils.close(ps, rs);
+		}
+	}
+}
+
+/**
+ * Returns an unmodifiable set of issue keys that have summaries longer that acceptable by JIRA
+ *
+ * @return an unmodifiable set of issue keys as Strings
+ */
+public Set /* <String> */getTruncSummaryIssueKeys()
+{
+	return Collections.unmodifiableSet(truncSummaryIssueKeys);
+}
 }
