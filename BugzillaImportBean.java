@@ -153,12 +153,12 @@ public class BugzillaImportBean
 
     public static final String BUGZILLA_ID_TYPE = "importid";
     public static final String BUGZILLA_ID_SEARCHER = "exactnumber";
-    public static final String BUGZILLA_ID_CF_NAME = "phpBB Bug Id";
+    public static final String BUGZILLA_ID_CF_NAME = "Old phpBB Bug Id";
     private CustomField bugzillaIdCustomField;
     private boolean cryptedPasswords = false;
     private PreparedStatement profilePS;
     private PreparedStatement componentPS;
-    private PreparedStatement productPS;
+    private PreparedStatement projectPS;
     private PreparedStatement commentPS;
     private final IssueFactory issueFactory;
     private final WorklogManager worklogManager;
@@ -298,20 +298,11 @@ public class BugzillaImportBean
 
     private void createPreparedStatements(final Connection conn) throws SQLException
     {
-        componentPS = conn.prepareStatement("select name from components where id = ?");
-        productPS = conn.prepareStatement("select name from products where id = ?");
+        // SQL query to get component name from id
+		componentPS = conn.prepareStatement("select component_name from trackers_component where component_id = ?");
 
-		/*if (tableHasColumn(conn, "profiles", "cryptpassword"))
-        {
-            cryptedPasswords = true;
-            profilePS = conn.prepareStatement("SELECT userid, login_name, realname FROM profiles where userid = ?");
-        }
-        else
-        {
-            cryptedPasswords = false;
-            profilePS = conn.prepareStatement("SELECT userid, login_name, realname, password FROM profiles where userid = ?");
-        }
-		*/
+		// Get Project name
+		projectPS = conn.prepareStatement("select project_name from trackers_projects where project_id = ?");
 
 		// Prepared Statement for profiles
 		cryptedPasswords = true;
@@ -326,9 +317,9 @@ public class BugzillaImportBean
         {
             componentPS.close();
         }
-        if (productPS != null)
+        if (projectPS != null)
         {
-            productPS.close();
+            projectPS.close();
         }
         if (profilePS != null)
         {
@@ -374,7 +365,7 @@ public class BugzillaImportBean
                 String componentName;
                 try
                 {
-                    componentName = resultSet.getString("component");
+                    componentName = resultSet.getString("component_name");
                 }
                 catch (final SQLException e)
                 {
@@ -384,7 +375,7 @@ public class BugzillaImportBean
                 final int bugId = resultSet.getInt("bug_id");
                 try
                 {
-                    final GenericValue issue = createIssue(resultSet, getProductName(resultSet, true), componentName);
+                    final GenericValue issue = createIssue(resultSet, getProjectName(resultSet, true), componentName);
                     createCommentAndDescription(bugId, issue);
                     // NOTE: this call has not been tested, we are waiting for test data, that is why it is surrounded
                     // in a conditional
@@ -427,21 +418,22 @@ public class BugzillaImportBean
         ImportUtils.closePS(linkDependsOnPrepStatement);
     }
 
-    private String getComponentName(final int componentId) throws SQLException
+	// DONE
+	private String getComponentName(final int componentId) throws SQLException
     {
         componentPS.setInt(1, componentId);
         final ResultSet rs = componentPS.executeQuery();
         rs.next();
-        final String name = rs.getString("name");
+        final String name = rs.getString("component_name");
         rs.close();
         return name;
     }
 
-    private GenericValue createIssue(final ResultSet resultSet, final String productName, final String componentName) throws IndexException, SQLException, GenericEntityException, CreateException
+    private GenericValue createIssue(final ResultSet resultSet, final String projectName, final String componentName) throws IndexException, SQLException, GenericEntityException, CreateException
     {
         final Map fields = new HashMap();
         final MutableIssue issueObject = IssueImpl.getIssueObject(null);
-        issueObject.setProject(getProject(productName));
+        issueObject.setProject(getProject(projectName));
         issueObject.setReporter(getUser(resultSet.getInt("reporter")));
         issueObject.setAssignee(getUser(resultSet.getInt("assigned_to")));
         if (resultSet.getString("bug_severity").equals("enhancement"))
@@ -492,7 +484,7 @@ public class BugzillaImportBean
         // setup the associations with components/versions
         final String version = resultSet.getString("version");
         final String fixversion = resultSet.getString("target_milestone");
-        createVersionComponentAssociations(issueObject, productName, version, componentName, fixversion);
+        createVersionComponentAssociations(issueObject, projectName, version, componentName, fixversion);
 
         // NOTE: this call has not been tested, we are waiting for test data, that is why it is surrounded
         // in a conditional
@@ -849,7 +841,7 @@ public class BugzillaImportBean
             }
             log("Importing Component: " + component);
 
-            final boolean created = createComponent(getProductName(resultSet, false), component, componentLead, resultSet.getString("description"));
+            final boolean created = createComponent(getProjectName(resultSet, false), component, componentLead, resultSet.getString("description"));
             if (created)
             {
                 componentCount++;
@@ -885,39 +877,30 @@ public class BugzillaImportBean
      * @return product name
      * @throws SQLException if reading from result set fails
      */
-    private String getProductName(final ResultSet resultSet, final boolean isBugzillaBug) throws SQLException
+    private String getProjectName(final ResultSet resultSet, final boolean isBugzillaBug) throws SQLException
     {
         String projectName;
         try
         {
             // 2.17+ format
-            final int pid = resultSet.getInt("product_id");
+            final int pid = resultSet.getInt("project_id");
             if (pid == 0)
             {
-                throw new RuntimeException("Null product_id for " + resultSet);
+                throw new RuntimeException("Null project_id for " + resultSet);
             }
-            productPS.setInt(1, pid);
-            final ResultSet rs = productPS.executeQuery();
+            projectPS.setInt(1, pid);
+            final ResultSet rs = projectPS.executeQuery();
             final boolean hasNext = rs.next();
             if (!hasNext)
             {
-                throw new RuntimeException("No product with ID " + pid);
+                throw new RuntimeException("No project with ID " + pid);
             }
-            projectName = rs.getString("name");
+            projectName = rs.getString("project_name");
             rs.close();
         }
         catch (final SQLException e)
         {
-            // If we don't have a product_id, we may be using Bugzilla 2.16 or earlier. In this case, the resultSet
-            // may be for the components or bugs tables:
-            if (isBugzillaBug)
-            {
-                projectName = resultSet.getString("product");
-            }
-            else
-            {
-                projectName = resultSet.getString("program");
-            }
+            projectName = resultSet.getString("project_name");
         }
         return projectName;
     }
@@ -976,7 +959,7 @@ public class BugzillaImportBean
             final String versionName = resultSet.getString("value");
             log("Importing Version: " + versionName);
 
-            final boolean created = createVersion(getProductName(resultSet, false), versionName);
+            final boolean created = createVersion(getProjectName(resultSet, false), versionName);
             if (created)
             {
                 count++;
@@ -991,7 +974,7 @@ public class BugzillaImportBean
         int count = 0;
 
         String sql;
-        sql = "select product_id, target_milestone from bugs where " + whereSelectedProjectClauseForVersionsAndComponents() + " group by product_id, target_milestone";
+        sql = "select project_id, target_milestone from bugs where " + whereSelectedProjectClauseForVersionsAndComponents() + " group by project_id, target_milestone";
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
 
@@ -1002,8 +985,8 @@ public class BugzillaImportBean
             {
                 log("Importing Version: " + versionName);
 
-                final String productName = getProductName(resultSet, true);
-                final boolean created = createVersion(productName, versionName);
+                final String projectName = getProjectName(resultSet, true);
+                final boolean created = createVersion(projectName, versionName);
                 if (created)
                 {
                     count++;
@@ -1100,15 +1083,15 @@ public class BugzillaImportBean
         resultSet = preparedStatement.executeQuery();
         while (resultSet.next())
         {
-            final String product = resultSet.getString("project_name");
-            projectToBugzillaIdMap.put(product, new Integer(resultSet.getInt("project_id")));
+            final String project = resultSet.getString("project_name");
+            projectToBugzillaIdMap.put(project, new Integer(resultSet.getInt("project_id")));
 
-            log("Importing Project: " + product);
+            log("Importing Project: " + project);
 
             final String description = resultSet.getString("project_description");
-			final String productKey = resultSet.getString("project_name_unix");
+			final String projectKey = resultSet.getString("project_name_unix");
 
-            final boolean created = createProject(product, productKey, description);
+            final boolean created = createProject(project, projectKey, description);
 
             if (created)
             {
@@ -1119,19 +1102,19 @@ public class BugzillaImportBean
         ImportUtils.closePS(preparedStatement);
     }
 
-    private boolean createProject(final String product, final String productKey, final String description)
+    private boolean createProject(final String project, final String projectKey, final String description)
     {
-        if (product == null)
+        if (project == null)
         {
-            throw new IllegalArgumentException("Product (description '" + description + "') cannot be null");
+            throw new IllegalArgumentException("Project (description '" + description + "') cannot be null");
         }
 
-        final GenericValue existingProject = projectManager.getProjectByName(product);
+        final GenericValue existingProject = projectManager.getProjectByName(project);
         if (existingProject != null)
         {
-            log("Project: " + product + " already exists. Not imported");
-            // JRA-11466 - MySQL is case-insensitive, so store product keys in lowercase
-            projectKeys.put(product.toLowerCase(), existingProject);
+            log("Project: " + project + " already exists. Not imported");
+            // JRA-11466 - MySQL is case-insensitive, so store project keys in lowercase
+            projectKeys.put(project.toLowerCase(), existingProject);
             return false;
         }
         else
@@ -1139,20 +1122,20 @@ public class BugzillaImportBean
             GenericValue project;
             try
             {
-                project = ProjectUtils.createProject(EasyMap.build("key", productKey, "lead",
-                    bugzillaMappingBean.getProjectLead(product), "name", product, "description", description));
+                project = ProjectUtils.createProject(EasyMap.build("key", projectKey, "lead",
+                    bugzillaMappingBean.getProjectLead(project), "name", project, "description", description));
 
                 //Add the default permission scheme for this project
                 permissionSchemeManager.addDefaultSchemeToProject(project);
                 // Add the default issue type screen scheme for this project
                 issueTypeScreenSchemeManager.associateWithDefaultScheme(project);
-                // JRA-11466 - MySQL is case-insensitive, so store product keys in lowercase
-                projectKeys.put(product.toLowerCase(), project);
+                // JRA-11466 - MySQL is case-insensitive, so store project keys in lowercase
+                projectKeys.put(project.toLowerCase(), project);
                 return true;
             }
             catch (final Exception e)
             {
-                log("Error importing Project: " + product);
+                log("Error importing Project: " + project);
                 log(ExceptionUtils.getStackTrace(e));
                 return false;
             }
@@ -1673,8 +1656,8 @@ public class BugzillaImportBean
             while (resultSet.next())
             {
 				// Solved initial bug in Bugzilla importer - column_name wrong
-                String product = resultSet.getString("project_name");
-                projects.add(product);
+                String project = resultSet.getString("project_name");
+                projects.add(project);
             }
             return projects;
         }
@@ -1802,85 +1785,85 @@ public class BugzillaImportBean
         public String getProjectLead(String project);
     }
 
-    public static abstract class DefaultBugzillaMappingBean implements BugzillaMappingBean
-    {
-        private static Map priorityMap = new HashMap();
-        private static Map resolutionMap = new HashMap();
-        private static Map statusMap = new HashMap();
-        private static Map wfStepMap = new HashMap();
-        private static Map wfStatusMap = new HashMap();
+public static abstract class DefaultBugzillaMappingBean implements BugzillaMappingBean
+{
+	private static Map priorityMap = new HashMap();
+	private static Map resolutionMap = new HashMap();
+	private static Map statusMap = new HashMap();
+	private static Map wfStepMap = new HashMap();
+	private static Map wfStatusMap = new HashMap();
 
-        static
-        {
-            // bugzilla's severities mapping to JIRA priorities
-            priorityMap.put("blocker", "" + IssueFieldConstants.BLOCKER_PRIORITY_ID);
-            priorityMap.put("critical", "" + IssueFieldConstants.CRITICAL_PRIORITY_ID);
-            priorityMap.put("major", "" + IssueFieldConstants.MAJOR_PRIORITY_ID);
-            priorityMap.put("normal", "" + IssueFieldConstants.MAJOR_PRIORITY_ID);
-            priorityMap.put("enhancement", "" + IssueFieldConstants.MINOR_PRIORITY_ID);
-            priorityMap.put("minor", "" + IssueFieldConstants.MINOR_PRIORITY_ID);
-            priorityMap.put("trivial", "" + IssueFieldConstants.TRIVIAL_PRIORITY_ID);
+	static
+	{
+		// bugzilla's severities mapping to JIRA priorities
+		priorityMap.put("blocker", "" + IssueFieldConstants.BLOCKER_PRIORITY_ID);
+		priorityMap.put("critical", "" + IssueFieldConstants.CRITICAL_PRIORITY_ID);
+		priorityMap.put("major", "" + IssueFieldConstants.MAJOR_PRIORITY_ID);
+		priorityMap.put("normal", "" + IssueFieldConstants.MAJOR_PRIORITY_ID);
+		priorityMap.put("enhancement", "" + IssueFieldConstants.MINOR_PRIORITY_ID);
+		priorityMap.put("minor", "" + IssueFieldConstants.MINOR_PRIORITY_ID);
+		priorityMap.put("trivial", "" + IssueFieldConstants.TRIVIAL_PRIORITY_ID);
 
-            // bugzilla resolutions mapping to JIRA resolutions
-            resolutionMap.put("", null);
-            resolutionMap.put("FIXED", "" + IssueFieldConstants.FIXED_RESOLUTION_ID);
-            resolutionMap.put("INVALID", "" + IssueFieldConstants.INCOMPLETE_RESOLUTION_ID);
-            resolutionMap.put("WONTFIX", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
-            resolutionMap.put("LATER", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
-            resolutionMap.put("REMIND", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
-            resolutionMap.put("DUPLICATE", "" + IssueFieldConstants.DUPLICATE_RESOLUTION_ID);
-            resolutionMap.put("WORKSFORME", "" + IssueFieldConstants.CANNOTREPRODUCE_RESOLUTION_ID);
-            resolutionMap.put("NEEDTESTCASE", "" + IssueFieldConstants.INCOMPLETE_RESOLUTION_ID);
+		// bugzilla resolutions mapping to JIRA resolutions
+		resolutionMap.put("", null);
+		resolutionMap.put("FIXED", "" + IssueFieldConstants.FIXED_RESOLUTION_ID);
+		resolutionMap.put("INVALID", "" + IssueFieldConstants.INCOMPLETE_RESOLUTION_ID);
+		resolutionMap.put("WONTFIX", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
+		resolutionMap.put("LATER", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
+		resolutionMap.put("REMIND", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
+		resolutionMap.put("DUPLICATE", "" + IssueFieldConstants.DUPLICATE_RESOLUTION_ID);
+		resolutionMap.put("WORKSFORME", "" + IssueFieldConstants.CANNOTREPRODUCE_RESOLUTION_ID);
+		resolutionMap.put("NEEDTESTCASE", "" + IssueFieldConstants.INCOMPLETE_RESOLUTION_ID);
 
-            // bugzilla status mapping to JIRA status
-            statusMap.put("UNCONFIRMED", "" + IssueFieldConstants.OPEN_STATUS_ID);
-            statusMap.put("NEW", "" + IssueFieldConstants.OPEN_STATUS_ID);
-            statusMap.put("ASSIGNED", "" + IssueFieldConstants.OPEN_STATUS_ID);
-            statusMap.put("REOPENED", "" + IssueFieldConstants.REOPENED_STATUS_ID);
-            statusMap.put("RESOLVED", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
-            statusMap.put("VERIFIED", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
-            statusMap.put("CLOSED", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+		// bugzilla status mapping to JIRA status
+		statusMap.put("UNCONFIRMED", "" + IssueFieldConstants.OPEN_STATUS_ID);
+		statusMap.put("NEW", "" + IssueFieldConstants.OPEN_STATUS_ID);
+		statusMap.put("ASSIGNED", "" + IssueFieldConstants.OPEN_STATUS_ID);
+		statusMap.put("REOPENED", "" + IssueFieldConstants.REOPENED_STATUS_ID);
+		statusMap.put("RESOLVED", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
+		statusMap.put("VERIFIED", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
+		statusMap.put("CLOSED", "" + IssueFieldConstants.CLOSED_STATUS_ID);
 
-            // workflow Mappings
-            wfStepMap.put("1", new Integer("1"));
-            wfStepMap.put("2", new Integer("2"));
-            wfStepMap.put("3", new Integer("3"));
-            wfStepMap.put("4", new Integer("5"));
-            wfStepMap.put("5", new Integer("4"));
-            wfStepMap.put("6", new Integer("6"));
+		// workflow Mappings
+		wfStepMap.put("1", new Integer("1"));
+		wfStepMap.put("2", new Integer("2"));
+		wfStepMap.put("3", new Integer("3"));
+		wfStepMap.put("4", new Integer("5"));
+		wfStepMap.put("5", new Integer("4"));
+		wfStepMap.put("6", new Integer("6"));
 
-            wfStatusMap.put("1", "Open");
-            wfStatusMap.put("3", "In Progress");
-            wfStatusMap.put("4", "Reopened");
-            wfStatusMap.put("5", "Resolved");
-            wfStatusMap.put("6", "Closed");
-        }
+		wfStatusMap.put("1", "Open");
+		wfStatusMap.put("3", "In Progress");
+		wfStatusMap.put("4", "Reopened");
+		wfStatusMap.put("5", "Resolved");
+		wfStatusMap.put("6", "Closed");
+	}
 
-        public String getPriority(final String originalPriority)
-        {
-            return (String) priorityMap.get(originalPriority);
-        }
+	public String getPriority(final String originalPriority)
+	{
+		return (String) priorityMap.get(originalPriority);
+	}
 
-        public String getResolution(final String originalResolution)
-        {
-            return (String) resolutionMap.get(originalResolution);
-        }
+	public String getResolution(final String originalResolution)
+	{
+		return (String) resolutionMap.get(originalResolution);
+	}
 
-        public String getStatus(final String originalStatus)
-        {
-            return (String) statusMap.get(originalStatus);
-        }
+	public String getStatus(final String originalStatus)
+	{
+		return (String) statusMap.get(originalStatus);
+	}
 
-        public Integer getWorkflowStep(final String originalWorkflowStep)
-        {
-            return (Integer) wfStepMap.get(originalWorkflowStep);
-        }
+	public Integer getWorkflowStep(final String originalWorkflowStep)
+	{
+		return (Integer) wfStepMap.get(originalWorkflowStep);
+	}
 
-        public String getWorkflowStatus(final String originalWorkflowStatus)
-        {
-            return (String) wfStatusMap.get(originalWorkflowStatus);
-        }
-    }
+	public String getWorkflowStatus(final String originalWorkflowStatus)
+	{
+		return (String) wfStatusMap.get(originalWorkflowStatus);
+	}
+}
 
 /**
 * responsible for getting a Set of user names
@@ -1995,13 +1978,13 @@ private class UserNameCollator
 	}
 }
 
-/**
- * Returns an unmodifiable set of issue keys that have summaries longer that acceptable by JIRA
- *
- * @return an unmodifiable set of issue keys as Strings
- */
-public Set /* <String> */getTruncSummaryIssueKeys()
-{
-	return Collections.unmodifiableSet(truncSummaryIssueKeys);
-}
+	/**
+	 * Returns an unmodifiable set of issue keys that have summaries longer that acceptable by JIRA
+	 *
+	 * @return an unmodifiable set of issue keys as Strings
+	 */
+	public Set /* <String> */getTruncSummaryIssueKeys()
+	{
+		return Collections.unmodifiableSet(truncSummaryIssueKeys);
+	}
 }
