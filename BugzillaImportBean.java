@@ -511,7 +511,7 @@ public class BugzillaImportBean
             truncSummaryIssueKeys.add(issue.getString("key"));
         }
 
-        final String bugzillaStatus = resultSet.getString("bug_status");
+        final String bugzillaStatus = resultSet.getString("bug_status").toLowerCase();
         String jiraBugStatus = bugzillaMappingBean.getStatus(bugzillaStatus);
         boolean foundStatus = true;
         // JRA-10017 - always fall back to the open status if we can't find the correct status
@@ -529,7 +529,7 @@ public class BugzillaImportBean
         }
         else
         {
-            final String resolution = bugzillaMappingBean.getResolution(resultSet.getString("resolution"));
+            final String resolution = bugzillaMappingBean.getResolution(resultSet.getString("resolution").toLowerCase());
             issue.set(IssueFieldConstants.RESOLUTION, resolution);
             //If the issue is resolved, also set the resolution date (the mapping may return null meaning unresolved).
             //We'll use the last updated time for this, since bugzilla doesn't seem to store a resolution date.
@@ -1814,34 +1814,45 @@ public static abstract class DefaultBugzillaMappingBean implements BugzillaMappi
 
 	static
 	{
-		// bugzilla's severities mapping to JIRA priorities
-		priorityMap.put("blocker", "" + IssueFieldConstants.BLOCKER_PRIORITY_ID);
-		priorityMap.put("critical", "" + IssueFieldConstants.CRITICAL_PRIORITY_ID);
-		priorityMap.put("major", "" + IssueFieldConstants.MAJOR_PRIORITY_ID);
-		priorityMap.put("normal", "" + IssueFieldConstants.MAJOR_PRIORITY_ID);
-		priorityMap.put("enhancement", "" + IssueFieldConstants.MINOR_PRIORITY_ID);
-		priorityMap.put("minor", "" + IssueFieldConstants.MINOR_PRIORITY_ID);
-		priorityMap.put("trivial", "" + IssueFieldConstants.TRIVIAL_PRIORITY_ID);
+		// phpBB severities mapping to JIRA priorities
+		priorityMap.put("severe", "" + IssueFieldConstants.CRITICAL_PRIORITY_ID);
+		priorityMap.put("possibly invalid", "" + IssueFieldConstants.TRIVIAL_PRIORITY_ID);
 
-		// bugzilla resolutions mapping to JIRA resolutions
+		// phpBB resolutions mapping to JIRA resolutions
 		resolutionMap.put("", null);
-		resolutionMap.put("FIXED", "" + IssueFieldConstants.FIXED_RESOLUTION_ID);
-		resolutionMap.put("INVALID", "" + IssueFieldConstants.INCOMPLETE_RESOLUTION_ID);
-		resolutionMap.put("WONTFIX", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
-		resolutionMap.put("LATER", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
-		resolutionMap.put("REMIND", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
-		resolutionMap.put("DUPLICATE", "" + IssueFieldConstants.DUPLICATE_RESOLUTION_ID);
-		resolutionMap.put("WORKSFORME", "" + IssueFieldConstants.CANNOTREPRODUCE_RESOLUTION_ID);
-		resolutionMap.put("NEEDTESTCASE", "" + IssueFieldConstants.INCOMPLETE_RESOLUTION_ID);
+		resolutionMap.put("will not fix", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
+		resolutionMap.put("duplicate", "" + IssueFieldConstants.DUPLICATE_RESOLUTION_ID);
+		resolutionMap.put("unreproducible", "" + IssueFieldConstants.CANNOTREPRODUCE_RESOLUTION_ID);
+		resolutionMap.put("support request", "" + IssueFieldConstants.INCOMPLETE_RESOLUTION_ID);
+		resolutionMap.put("fix completed in svn", "" + IssueFieldConstants.FIXED_RESOLUTION_ID);
+		resolutionMap.put("already fixed", "" + IssueFieldConstants.FIXED_RESOLUTION_ID);
+		resolutionMap.put("not a bug", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
 
-		// bugzilla status mapping to JIRA status
-		statusMap.put("UNCONFIRMED", "" + IssueFieldConstants.OPEN_STATUS_ID);
-		statusMap.put("NEW", "" + IssueFieldConstants.OPEN_STATUS_ID);
-		statusMap.put("ASSIGNED", "" + IssueFieldConstants.OPEN_STATUS_ID);
-		statusMap.put("REOPENED", "" + IssueFieldConstants.REOPENED_STATUS_ID);
-		statusMap.put("RESOLVED", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
-		statusMap.put("VERIFIED", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
-		statusMap.put("CLOSED", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+		resolutionMap.put("new", null);
+		resolutionMap.put("reviewed", null);
+		resolutionMap.put("review later", null);
+		resolutionMap.put("awaiting information", null);
+		resolutionMap.put("awaiting team input", null);
+		resolutionMap.put("pending", null);
+		resolutionMap.put("fix in progress", null);
+
+		// phpBB status mapping to JIRA status
+		statusMap.put("new", "" + IssueFieldConstants.OPEN_STATUS_ID);
+
+		statusMap.put("will not fix", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+		statusMap.put("duplicate", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+		statusMap.put("unreproducible", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+		statusMap.put("support request", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+		statusMap.put("fix completed in svn", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
+		statusMap.put("already fixed", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
+		statusMap.put("not a bug", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+
+		statusMap.put("reviewed", "" + IssueFieldConstants.OPEN_STATUS_ID);
+		statusMap.put("review later", "" + IssueFieldConstants.OPEN_STATUS_ID);
+		statusMap.put("awaiting information", "" + IssueFieldConstants.OPEN_STATUS_ID);
+		statusMap.put("awaiting team input", "" + IssueFieldConstants.OPEN_STATUS_ID);
+		statusMap.put("pending", "" + IssueFieldConstants.OPEN_STATUS_ID);
+		statusMap.put("fix in progress", "" + IssueFieldConstants.OPEN_STATUS_ID);
 
 		// workflow Mappings
 		wfStepMap.put("1", new Integer("1"));
