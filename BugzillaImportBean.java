@@ -106,6 +106,11 @@ public class BugzillaImportBean
 {
     private static final Logger log4jLog = Logger.getLogger(BugzillaImportBean.class);
     private static final String PHPBB_CHANGE_ITEM_FIELD = "phpBB Import Key";
+	// Nils' user id to map as component/project lead
+	private static final int PHPBB_PROJECTS_LEADER_ID = 75126;
+	// Nils' username in case we need it directly
+	private static final String PHPBB_PROJECTS_LEADER_NAME = "naderman";
+
     private final IssueIndexManager indexManager;
     private final GenericDelegator genericDelegator;
     private final ProjectManager projectManager;
@@ -340,8 +345,7 @@ public class BugzillaImportBean
         // use the changeItem importLog to retrieve the list of issues previously imported from phpBB
         previouslyImportedKeys = retrieveImportedIssues();
 
-        String sql = "SELECT * FROM bugs where ";
-        sql += whereSelectedProjectClauseForVersionsAndComponents();
+        String sql = "SELECT * FROM bugs where project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
 
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
@@ -829,7 +833,7 @@ public class BugzillaImportBean
         int componentCount = 0;
         log("\n\nImporting Components from project(s) " + selectedProjects + "\n");
 
-        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT * FROM components where " + whereSelectedProjectClauseForVersionsAndComponents());
+        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT * FROM components where project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ");
         final ResultSet resultSet = preparedStatement.executeQuery();
         String componentLead = null;
         String component = null;
@@ -838,7 +842,7 @@ public class BugzillaImportBean
             try
             {
                 // lookup the component lead (only available in Enterprise)
-                componentLead = getComponentLead(resultSet.getInt("initialowner"));
+                componentLead = getComponentLead(PHPBB_PROJECTS_LEADER_ID);
                 component = resultSet.getString("name");
             }
             catch (final SQLException ex)
@@ -868,6 +872,7 @@ public class BugzillaImportBean
         ImportUtils.closePS(preparedStatement);
     }
 
+	// DONE
     private String getComponentLead(final int defaultAssigneeId) throws SQLException
     {
         String componentLead = null;
@@ -955,6 +960,7 @@ public class BugzillaImportBean
         }
     }
 
+	// DONE
     private void createVersions(final Connection conn) throws SQLException
     {
         log("\n\nImporting Versions from project " + selectedProjects + "\n");
@@ -967,7 +973,7 @@ public class BugzillaImportBean
     {
         int count = 0;
 
-        final String sql = "select * from versions where " + whereSelectedProjectClauseForVersionsAndComponents();
+        final String sql = "select * from versions where project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
 
@@ -991,7 +997,7 @@ public class BugzillaImportBean
         int count = 0;
 
         String sql;
-        sql = "select project_id, target_milestone from bugs where " + whereSelectedProjectClauseForVersionsAndComponents() + " group by project_id, target_milestone";
+        sql = "select project_id, target_milestone from bugs where project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") group by project_id, target_milestone";
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
 
@@ -1012,19 +1018,6 @@ public class BugzillaImportBean
         }
         log(count + " versions imported from phpBB from the bugs table.");
         ImportUtils.closePS(preparedStatement);
-    }
-
-    /**
-     * Creates a clause for the where part of a query on Versions or Components
-     * that restricts results to the correct projects. JRA-8555 seems to be due
-     * to the crazy fact that old phpBB versions use "program" in the
-     * VERSIONS and COMPONENTS tables and "product" in the BUGS table.
-     *
-     * @return the clause suitable for putting after the where.
-     */
-    private String whereSelectedProjectClauseForVersionsAndComponents()
-    {
-        return " project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
     }
 
     /**
@@ -1119,6 +1112,7 @@ public class BugzillaImportBean
         ImportUtils.closePS(preparedStatement);
     }
 
+	// DONE
     private boolean createProject(final String project, final String projectKey, final String description)
     {
         if (project == null)
@@ -1139,8 +1133,9 @@ public class BugzillaImportBean
             GenericValue project;
             try
             {
+				// @Deprecated
                 project = ProjectUtils.createProject(EasyMap.build("key", projectKey, "lead",
-                    phpBBMappingBean.getProjectLead(project), "name", project, "description", description));
+                    PHPBB_PROJECTS_LEADER_NAME, "name", project, "description", description));
 
                 //Add the default permission scheme for this project
                 permissionSchemeManager.addDefaultSchemeToProject(project);
@@ -1159,7 +1154,8 @@ public class BugzillaImportBean
         }
     }
 
-    private void createUser(final int phpBBId) throws SQLException
+	// DONE
+	private void createUser(final int phpBBId) throws SQLException
     {
         profilePS.setInt(1, phpBBId);
         final ResultSet resultSet = profilePS.executeQuery();
@@ -1172,6 +1168,7 @@ public class BugzillaImportBean
         resultSet.close();
     }
 
+	// DONE
     private int createUserFrom(final ResultSet resultSet) throws SQLException
     {
         int count = 0;
@@ -1206,7 +1203,8 @@ public class BugzillaImportBean
      * @return username
      * @throws SQLException if reading from result set fails
      */
-    protected String getUsernameFromPhpBBProfile(final ResultSet phpBBProfileResultSet) throws SQLException
+	// DONE
+	protected String getUsernameFromPhpBBProfile(final ResultSet phpBBProfileResultSet) throws SQLException
     {
 //        return TextUtils.noNull(phpBBProfileResultSet.getString("username")).toLowerCase().trim();
 		return phpBBProfileResultSet.getString("username");
@@ -1667,6 +1665,7 @@ public class BugzillaImportBean
         }
     }
 
+	// DONE
     private void createOrFindCustomFields() throws GenericEntityException
     {
         final CustomFieldType numericFieldCFType = customFieldManager.getCustomFieldType(CreateCustomField.FIELD_TYPE_PREFIX + PHPBB_ID_TYPE);
