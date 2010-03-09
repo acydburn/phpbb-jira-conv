@@ -105,7 +105,7 @@ import java.util.Set;
 public class BugzillaImportBean
 {
     private static final Logger log4jLog = Logger.getLogger(BugzillaImportBean.class);
-    private static final String BUGZILLA_CHANGE_ITEM_FIELD = "phpBB Import Key";
+    private static final String PHPBB_CHANGE_ITEM_FIELD = "phpBB Import Key";
     private final IssueIndexManager indexManager;
     private final GenericDelegator genericDelegator;
     private final ProjectManager projectManager;
@@ -136,26 +136,25 @@ public class BugzillaImportBean
     // Map of lowercase'd project names to JIRA Project GVs
     private final Map projectKeys = new HashMap();
 
-    // Map from Bugzilla user id to Jira User
+    // Map from phpBB user id to Jira User
     private final Map versionKeys = new HashMap();
     private final Map componentKeys = new HashMap();
 
-    // bugzilla -> jira issue key mappings
+    // phpBB -> jira issue key mappings
     private Map previouslyImportedKeys = new HashMap(); // issues imported at any time (this or earlier runs)
-    private Map importedKeys = new HashMap(); // Map of bugzilla ids (Integer) to Jira ids (Long) of issues imported during this run
+    private Map importedKeys = new HashMap(); // Map of phpBB ids (Integer) to Jira ids (Long) of issues imported during this run
     private String selectedProjects;
     private User importer;
-    private BugzillaMappingBean bugzillaMappingBean;
+    private PhpBBMappingBean phpbbMappingBean;
     private boolean reuseExistingUsers;
     private boolean workHistory;
-    private final Map projectToBugzillaIdMap = new HashMap();
+    private final Map projectToPhpBBIdMap = new HashMap();
     private boolean onlyNewIssues;
 
-    public static final String BUGZILLA_ID_TYPE = "importid";
-    public static final String BUGZILLA_ID_SEARCHER = "exactnumber";
-    public static final String BUGZILLA_ID_CF_NAME = "Old phpBB Bug Id";
-    private CustomField bugzillaIdCustomField;
-    private boolean cryptedPasswords = false;
+    public static final String PHPBB_ID_TYPE = "importid";
+    public static final String PHPBB_ID_SEARCHER = "exactnumber";
+    public static final String PHPBB_ID_CF_NAME = "Old phpBB Bug Id";
+    private CustomField phpBBIdCustomField;
     private PreparedStatement profilePS;
     private PreparedStatement componentPS;
     private PreparedStatement projectPS;
@@ -195,7 +194,7 @@ public class BugzillaImportBean
      * specified projects and will return the users that do not yet exist.
      *
      * @param connectionBean initialized connection bean
-     * @param projectNames   the projects, by bugzilla project name, that you want to import.
+     * @param projectNames   the projects, by phpBB project name, that you want to import.
      * @return Set <ExternalUser> all the users that will need to exist in JIRA but do not yet.
      */
     public Set getNonExistentAssociatedUsers(final BugzillaConnectionBean connectionBean, final String[] projectNames)
@@ -204,20 +203,20 @@ public class BugzillaImportBean
     }
 
     /**
-     * Main method of this bean.  Creates JIRA projects mirroring those found in a Bugzilla database.
+     * Main method of this bean.  Creates JIRA projects mirroring those found in a phpBB database.
      *
-     * @param bugzillaMappingBean Mappings from Bugzilla to JIRA, including project key, statuses, etc
+     * @param phpBBMappingBean Mappings from phpBB to JIRA, including project key, statuses, etc
      * @param connectionBean      Bugzilla connection bean
      * @param enableNotifications Whether to send email notifications for newly created issues
-     * @param reuseExistingUsers  Do we try to reuse existing users, or create a unique user for every Bugzilla user?
+     * @param reuseExistingUsers  Do we try to reuse existing users, or create a unique user for every phpBB user?
      * @param onlyNewIssues       Should we only import issues that haven't previously been imported (to avoid duplicates)?
      * @param reindex             Whether to reindex after the import
      * @param workHistory         Whether to import work history as well
-     * @param projectNames        Array of Bugzilla project names to import
+     * @param projectNames        Array of phpBB project names to import
      * @param importer            User performing the import operation
      * @throws Exception if something goes wrong
      */
-    public void create(final BugzillaMappingBean bugzillaMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
+    public void create(final PhpBBMappingBean phpBBMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
     {
         importLog = new StringBuffer(1024 * 30);
         if (projectNames.length == 0)
@@ -225,7 +224,7 @@ public class BugzillaImportBean
             log("No projects selected for import");
             return;
         }
-        this.bugzillaMappingBean = bugzillaMappingBean;
+        this.phpBBMappingBean = phpBBMappingBean;
         this.reuseExistingUsers = reuseExistingUsers;
         this.onlyNewIssues = onlyNewIssues;
         this.workHistory = workHistory;
@@ -305,7 +304,6 @@ public class BugzillaImportBean
 		projectPS = conn.prepareStatement("select project_name from trackers_projects where project_id = ?");
 
 		// Prepared Statement for profiles
-		cryptedPasswords = true;
 		profilePS = conn.prepareStatement("SELECT user_id, username, user_email, username as realname FROM community_users WHERE user_id = ?");
 
 		// Get comment by ticket id
@@ -339,7 +337,7 @@ public class BugzillaImportBean
         int count = 0;
         log("\n\nImporting Issues from project(s) " + selectedProjects);
 
-        // use the changeItem importLog to retrieve the list of issues previously imported from Bugzilla
+        // use the changeItem importLog to retrieve the list of issues previously imported from phpBB
         previouslyImportedKeys = retrieveImportedIssues();
 
         String sql = "SELECT * FROM bugs where ";
@@ -396,7 +394,7 @@ public class BugzillaImportBean
                     else
                     {
                         // NOTE: should not occur, i enabled issue linking for duplicates (Meik)
-						log("Issue links will not be imported from bugzilla since issue linking is disabled in JIRA.");
+						log("Issue links will not be imported from phpBB since issue linking is disabled in JIRA.");
                     }
 
                 }
@@ -413,7 +411,7 @@ public class BugzillaImportBean
                 log("Not re-importing issue: \"" + resultSet.getString("short_desc") + "\"");
             }
         }
-        log(count + " issues imported from Bugzilla.");
+        log(count + " issues imported from phpBB.");
 
         ImportUtils.closePS(preparedStatement);
         ImportUtils.closePS(attachPrepStatement);
@@ -469,7 +467,7 @@ public class BugzillaImportBean
         {
             priorityString = priorityString.toLowerCase();
         }
-        issueObject.setPriorityId(bugzillaMappingBean.getPriority(priorityString));
+        issueObject.setPriorityId(phpBBMappingBean.getPriority(priorityString));
 
         final StringBuffer environment = new StringBuffer();
 
@@ -511,8 +509,8 @@ public class BugzillaImportBean
             truncSummaryIssueKeys.add(issue.getString("key"));
         }
 
-        final String bugzillaStatus = resultSet.getString("bug_status").toLowerCase();
-        String jiraBugStatus = bugzillaMappingBean.getStatus(bugzillaStatus);
+        final String phpBBStatus = resultSet.getString("bug_status").toLowerCase();
+        String jiraBugStatus = phpBBMappingBean.getStatus(phpBBStatus);
         boolean foundStatus = true;
         // JRA-10017 - always fall back to the open status if we can't find the correct status
         if (jiraBugStatus == null)
@@ -529,10 +527,10 @@ public class BugzillaImportBean
         }
         else
         {
-            final String resolution = bugzillaMappingBean.getResolution(resultSet.getString("resolution").toLowerCase());
+            final String resolution = phpBBMappingBean.getResolution(resultSet.getString("resolution").toLowerCase());
             issue.set(IssueFieldConstants.RESOLUTION, resolution);
             //If the issue is resolved, also set the resolution date (the mapping may return null meaning unresolved).
-            //We'll use the last updated time for this, since bugzilla doesn't seem to store a resolution date.
+            //We'll use the last updated time for this, since phpBB doesn't seem to store a resolution date.
             if(resolution != null)
             {
                 issue.set(IssueFieldConstants.RESOLUTION_DATE, resultSet.getTimestamp("delta_ts"));
@@ -546,27 +544,27 @@ public class BugzillaImportBean
         issue.store();
         setCurrentWorkflowStep(issue);
 
-        final int bugzillaId = resultSet.getInt("bug_id");
-        createChangeHistory(bugzillaId, issue);
-        previouslyImportedKeys.put(new Integer(bugzillaId), issue.getLong("id"));
+        final int TicketId = resultSet.getInt("ticket_id");
+        createChangeHistory(TicketId, issue);
+        previouslyImportedKeys.put(new Integer(TicketId), issue.getLong("id"));
 
-        importedKeys.put(new Integer(bugzillaId), issue.getLong("id"));
+        importedKeys.put(new Integer(TicketId), issue.getLong("id"));
 
         // Create custom field value for the issue
-        if (bugzillaIdCustomField != null)
+        if (phpBBIdCustomField != null)
         {
-            bugzillaIdCustomField.createValue(IssueImpl.getIssueObject(issue), new Double(bugzillaId));
+            phpBBIdCustomField.createValue(IssueImpl.getIssueObject(issue), new Double(TicketId));
 
             indexManager.reIndex(issue);
         }
         else
         {
-            log("Bugzilla Id customfield not found. Bugzilla Id not added.");
+            log("phpBB Id customfield not found. phpBB Id not added.");
         }
 
         if (!foundStatus)
         {
-            log("Creating issue: " + issue.getString("key") + " for bugzilla issue: " + bugzillaId + " we could not find a mapping for Bugzilla status " + bugzillaStatus + ", defaulting to JIRA status Open");
+            log("Creating issue: " + issue.getString("key") + " for phpBB issue: " + TicketId + " we could not find a mapping for phpBB status " + phpBBStatus + ", defaulting to JIRA status Open");
         }
 
         return issue;
@@ -574,22 +572,22 @@ public class BugzillaImportBean
 
     private String getEnhancementIssueTypeId()
     {
-        if (constantsManager.getIssueType(BugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID) != null)
+        if (constantsManager.getIssueType(PhpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID) != null)
         {
-            return BugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID;
+            return PhpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID;
         }
         else
         {
-            log("ERROR: JIRA does not have an enhancement issue type with id " + BugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID + "; creating as Bug instead");
+            log("ERROR: JIRA does not have an enhancement issue type with id " + PhpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID + "; creating as Bug instead");
             return getBugIssueTypeId();
         }
     }
 
     private String getBugIssueTypeId()
     {
-        if (constantsManager.getIssueType(BugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID) != null)
+        if (constantsManager.getIssueType(PhpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID) != null)
         {
-            return BugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID;
+            return PhpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID;
         }
         else
         {
@@ -599,14 +597,14 @@ public class BugzillaImportBean
                 throw new RuntimeException("No JIRA issue types defined!");
             }
             final String firstIssueType = ((GenericValue) issueTypes.iterator().next()).getString("id");
-            log("ERROR: JIRA does not have a bug issue type with id " + BugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID + "; using first found issue type " + firstIssueType + " instead.");
+            log("ERROR: JIRA does not have a bug issue type with id " + PhpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID + "; using first found issue type " + firstIssueType + " instead.");
             return firstIssueType;
         }
 
     }
 
     /**
-     * Associate the issue with a single version and component.  This is ok, as bugzilla only allows for a single
+     * Associate the issue with a single version and component.  This is ok, as phpBB only allows for a single
      * version and component for an issue.
      *
      * @param issue      issue
@@ -669,8 +667,8 @@ public class BugzillaImportBean
         // retrieve the wfCurrentStep for this issue and change it
         final Collection wfCurrentStepCollection = genericDelegator.findByAnd("OSCurrentStep", EasyMap.build("entryId", issue.getLong("workflowId")));
         final GenericValue wfCurrentStep = (GenericValue) getOnly(wfCurrentStepCollection);
-        wfCurrentStep.set("stepId", bugzillaMappingBean.getWorkflowStep(issue.getString("status")));
-        wfCurrentStep.set("status", bugzillaMappingBean.getWorkflowStatus(issue.getString("status")));
+        wfCurrentStep.set("stepId", phpBBMappingBean.getWorkflowStep(issue.getString("status")));
+        wfCurrentStep.set("status", phpBBMappingBean.getWorkflowStatus(issue.getString("status")));
         wfCurrentStep.store();
     }
 
@@ -748,16 +746,16 @@ public class BugzillaImportBean
     }
 
     /**
-     * Store the original bugzilla bug id in the change history.
+     * Store the original phpBB bug id in the change history.
      *
      * @param bug_id bug id
      * @param issue  issue
      */
     private void createChangeHistory(final int bug_id, final GenericValue issue)
     {
-        // create a change group and change item for each issue imported to record the original Bugzilla id.
+        // create a change group and change item for each issue imported to record the original phpBB id.
         // change items used to make sure issues are not duplicated
-        final List changeItems = EasyList.build(new ChangeItemBean(ChangeItemBean.STATIC_FIELD, BUGZILLA_CHANGE_ITEM_FIELD, null,
+        final List changeItems = EasyList.build(new ChangeItemBean(ChangeItemBean.STATIC_FIELD, PHPBB_CHANGE_ITEM_FIELD, null,
             Integer.toString(bug_id), null, issue.getLong("id").toString()));
         ChangeLogUtils.createChangeGroup(importer, issue, issue, changeItems, true);
     }
@@ -768,12 +766,12 @@ public class BugzillaImportBean
 
         int count = 0;
         final PreparedStatement preparedStatement = conn.prepareStatement("SELECT who FROM cc WHERE bug_id = ?");
-        final Iterator bugzillaBugIdIter = previouslyImportedKeys.keySet().iterator();
+        final Iterator phpBBBugIdIter = previouslyImportedKeys.keySet().iterator();
         // for each imported bug..
-        while (bugzillaBugIdIter.hasNext())
+        while (phpBBBugIdIter.hasNext())
         {
-            final Integer bugzillaBugId = (Integer) bugzillaBugIdIter.next();
-            preparedStatement.setInt(1, bugzillaBugId.intValue());
+            final Integer phpBBBugId = (Integer) phpBBBugIdIter.next();
+            preparedStatement.setInt(1, phpBBBugId.intValue());
             final ResultSet rs = preparedStatement.executeQuery();
             // for each watcher of an imported bug..
             while (rs.next())
@@ -781,33 +779,33 @@ public class BugzillaImportBean
                 try
                 {
                     final User watcher = getUser(rs.getInt("who")); // find or create the watcher
-                    final Long jiraBugId = (Long) previouslyImportedKeys.get(bugzillaBugId);
+                    final Long jiraBugId = (Long) previouslyImportedKeys.get(phpBBBugId);
                     final GenericValue issue = issueManager.getIssue(jiraBugId);
                     watcherManager.startWatching(watcher, issue);
                     count++;
                 }
                 catch (final SQLException e)
                 {
-                    final String err = "Failed to add a watcher to issue with Bugzilla id '" + bugzillaBugId + "': " + e.getMessage();
+                    final String err = "Failed to add a watcher to issue with phpBB id '" + phpBBBugId + "': " + e.getMessage();
                     log(err);
                     log4jLog.warn(err, e);
                 }
                 catch (final RuntimeException e)
                 {
-                    final String err = "Failed to add a watcher to issue with Bugzilla id '" + bugzillaBugId + "': " + e.getMessage();
+                    final String err = "Failed to add a watcher to issue with phpBB id '" + phpBBBugId + "': " + e.getMessage();
                     log(err);
                     log4jLog.warn(err, e);
                 }
             }
         }
         ImportUtils.closePS(preparedStatement);
-        log(count + " watchers imported from Bugzilla.");
+        log(count + " watchers imported from phpBB.");
     }
 
     /**
-     * Return a map of bugzillaKey (Integer) -> Jira Issues Id (Integer).
+     * Return a map of phpBBKey (Integer) -> Jira Issues Id (Integer).
      * <p/>
-     * It does this by looking through the change items for the bugzilla import key.
+     * It does this by looking through the change items for the phpBB import key.
      *
      * @return map of previously imported keys (old to new)
      * @throws GenericEntityException if cannot read from change items
@@ -816,8 +814,8 @@ public class BugzillaImportBean
     {
         final Map previousKeys = new HashMap();
 
-        // get the issues previously imported from Bugzilla via the change items.
-        final Collection changeItems = genericDelegator.findByAnd("ChangeItem", EasyMap.build("field", BUGZILLA_CHANGE_ITEM_FIELD));
+        // get the issues previously imported from phpBB via the change items.
+        final Collection changeItems = genericDelegator.findByAnd("ChangeItem", EasyMap.build("field", PHPBB_CHANGE_ITEM_FIELD));
         for (final Iterator iterator = changeItems.iterator(); iterator.hasNext();)
         {
             final GenericValue changeItem = (GenericValue) iterator.next();
@@ -853,7 +851,7 @@ public class BugzillaImportBean
                 }
                 else
                 {
-                    final String err = "Failed to retrieve a component from Bugzilla";
+                    final String err = "Failed to retrieve a component from phpBB";
                     log(err);
                     log4jLog.error(err, ex);
                 }
@@ -866,7 +864,7 @@ public class BugzillaImportBean
                 componentCount++;
             }
         }
-        log(componentCount + " components imported from Bugzilla.");
+        log(componentCount + " components imported from PhpBB.");
         ImportUtils.closePS(preparedStatement);
     }
 
@@ -892,11 +890,11 @@ public class BugzillaImportBean
      * For COMPONENTS and VERSIONS, they are listed in the program column
      *
      * @param resultSet     result set containing product information
-     * @param isBugzillaBug is bugzilla flag
+     * @param isPhpBBBug is phpBB flag
      * @return product name
      * @throws SQLException if reading from result set fails
      */
-    private String getProjectName(final ResultSet resultSet, final boolean isBugzillaBug) throws SQLException
+    private String getProjectName(final ResultSet resultSet, final boolean isPhpBBBug) throws SQLException
     {
         String projectName;
         try
@@ -985,7 +983,7 @@ public class BugzillaImportBean
             }
         }
         ImportUtils.closePS(preparedStatement);
-        log(count + " versions imported from Bugzilla from the versions table.");
+        log(count + " versions imported from phpBB from the versions table.");
     }
 
     private void createVersionFromBugsTable(final Connection conn) throws SQLException
@@ -1012,21 +1010,21 @@ public class BugzillaImportBean
                 }
             }
         }
-        log(count + " versions imported from Bugzilla from the bugs table.");
+        log(count + " versions imported from phpBB from the bugs table.");
         ImportUtils.closePS(preparedStatement);
     }
 
     /**
      * Creates a clause for the where part of a query on Versions or Components
      * that restricts results to the correct projects. JRA-8555 seems to be due
-     * to the crazy fact that old bugzilla versions use "program" in the
+     * to the crazy fact that old phpBB versions use "program" in the
      * VERSIONS and COMPONENTS tables and "product" in the BUGS table.
      *
      * @return the clause suitable for putting after the where.
      */
     private String whereSelectedProjectClauseForVersionsAndComponents()
     {
-        return " project_id in (" + commaSeparate(projectToBugzillaIdMap.values()) + ") ";
+        return " project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
     }
 
     /**
@@ -1103,7 +1101,7 @@ public class BugzillaImportBean
         while (resultSet.next())
         {
             final String project = resultSet.getString("project_name");
-            projectToBugzillaIdMap.put(project, new Integer(resultSet.getInt("project_id")));
+            projectToPhpBBIdMap.put(project, new Integer(resultSet.getInt("project_id")));
 
             log("Importing Project: " + project);
 
@@ -1142,7 +1140,7 @@ public class BugzillaImportBean
             try
             {
                 project = ProjectUtils.createProject(EasyMap.build("key", projectKey, "lead",
-                    bugzillaMappingBean.getProjectLead(project), "name", project, "description", description));
+                    phpBBMappingBean.getProjectLead(project), "name", project, "description", description));
 
                 //Add the default permission scheme for this project
                 permissionSchemeManager.addDefaultSchemeToProject(project);
@@ -1161,15 +1159,15 @@ public class BugzillaImportBean
         }
     }
 
-    private void createUser(final int bugzillaId) throws SQLException
+    private void createUser(final int phpBBId) throws SQLException
     {
-        profilePS.setInt(1, bugzillaId);
+        profilePS.setInt(1, phpBBId);
         final ResultSet resultSet = profilePS.executeQuery();
 
         final int count = createUserFrom(resultSet);
         if (count == 0)
         {
-            throw new RuntimeException("Could not create bugzilla user " + bugzillaId + ", referenced in the bugzilla database.");
+            throw new RuntimeException("Could not create phpBB user " + phpBBId + ", referenced in the phpBB database.");
         }
         resultSet.close();
     }
@@ -1177,29 +1175,20 @@ public class BugzillaImportBean
     private int createUserFrom(final ResultSet resultSet) throws SQLException
     {
         int count = 0;
-        String loginNameEmail;
+        String loginName;
         String fullname;
         while (resultSet.next())
         {
 			// Username is our phpBB Username...
-			loginNameEmail = getUsernameFromBugzillaProfile(resultSet);
+			loginName = getUsernameFromPhpBBProfile(resultSet);
             fullname = TextUtils.noNull(resultSet.getString("realname")).trim();
 
             final int user_id = resultSet.getInt("user_id");
 
             boolean created;
-            if (cryptedPasswords)
-            {
-                //Newer versions of Bugzilla don't use the password field, but instead use
-                //a hash.  We will ignore the passwords in this case
-                created = createUser(loginNameEmail, fullname, user_id, null);
+			// Do not create a password (null)
+			created = createUser(loginName, fullname, user_id, null);
 
-            }
-            else
-            {
-                final String password = TextUtils.noNull(resultSet.getString("password")).trim();
-                created = createUser(loginNameEmail, fullname, user_id, password);
-            }
             if (created)
             {
                 count++;
@@ -1209,69 +1198,68 @@ public class BugzillaImportBean
     }
 
     /**
-     * Given a Bugzilla 'profile' user record, infer a JIRA username from it.
-     * In Bugzilla your username is your email address, and this will become your JIRA username, unless this method
+     * Given a phpBB 'profile' user record, infer a JIRA username from it.
+     * In phpBB your username is your email address, and this will become your JIRA username, unless this method
      * is overridden to implement a different scheme.
      *
-     * @param bugzillaProfileResultSet profile result set
+     * @param phpBBProfileResultSet profile result set
      * @return username
      * @throws SQLException if reading from result set fails
      */
-    protected String getUsernameFromBugzillaProfile(final ResultSet bugzillaProfileResultSet) throws SQLException
+    protected String getUsernameFromPhpBBProfile(final ResultSet phpBBProfileResultSet) throws SQLException
     {
-//        return TextUtils.noNull(bugzillaProfileResultSet.getString("username")).toLowerCase().trim();
-		return bugzillaProfileResultSet.getString("username");
+//        return TextUtils.noNull(phpBBProfileResultSet.getString("username")).toLowerCase().trim();
+		return phpBBProfileResultSet.getString("username");
 
         // Alternatively, use the first part ('joe' in 'joe@company.com')
-        //        String name = bugzillaProfileResultSet.getString("username");
+        //        String name = phpBBProfileResultSet.getString("username");
         //        name = TextUtils.noNull(name).trim();
         //        int i = name.indexOf("@");
         //        if (i != -1) name = name.substring(0, i);
         //        return name;
     }
 
-    private boolean createUser(final String loginNameEmail, String fullname, final int bugzillaUserId, final String password)
+	// DONE
+    private boolean createUser(final String loginName, String fullname, final int phpBBUserId, final String password)
     {
-        log("Importing User: " + loginNameEmail);
+        log("Importing User: " + loginName);
         if (!TextUtils.stringSet(fullname))
         {
-            fullname = getFullNameFromEmail(loginNameEmail);
+            fullname = loginName;
         }
         try
         {
-            final User user = UserUtils.getUser(loginNameEmail);
-            if (user != null)
+            final User user = UserUtils.getUser(loginName);
+			// User exists in JIRA
+			if (user != null)
             {
-                log("\tUser: " + loginNameEmail + " already exists. Not imported");
-                userKeys.put(new Integer(bugzillaUserId), user);
+                log("\tUser: " + loginName + " already exists. Not imported");
+                userKeys.put(new Integer(phpBBUserId), user);
                 return reuseExistingUsers;
             }
         }
         catch (final EntityNotFoundException e)
         {
-            try
-            {
-                // Bugzilla uses the email address as user id, whereas JIRA has a distinct string for this.
-                // Here we check if the email address is currently owned by a user, to prevent a new user being
-                // created if a logically identical one exists
-                if (reuseExistingUsers)
-                {
-                    try
-                    {
-                        final User existingUser = UserUtils.getUserByEmail(loginNameEmail);
-                        if (existingUser != null)
-                        {
-                            log("User with email '" + loginNameEmail + "' already exists (" + existingUser.getName() + "). Not imported");
-                            userKeys.put(new Integer(bugzillaUserId), existingUser);
-                            return reuseExistingUsers;
-                        }
-                    }
-                    catch (final EntityNotFoundException ignored)
-                    {
-                        log4jLog.debug("Did not find user: " + loginNameEmail + " so a new user will be created");
-                    }
-                }
+			// UserUtils.getUser() should have asked Crowd directly, therefore we must assume the user does not exists in the phpBB Directory
+            log("User: " + loginName + " not imported. Unable to find the user in Crowd Directory");
+            return false;
 
+		
+/*
+			log4jLog.debug("Did not find user: " + loginName + " so a new user will be created");
+			// We do not want to create a user, we use Crowd...
+			// If Crowd is used JIRA does not actually create the user, but we need a user object
+            User user = userUtil.createUserNoEvent(
+                   loginName,
+                   password,
+                   loginNameEmail,
+                   fullname);
+                userKeys.put(new Integer(phpBBUserId), user);
+                return true;
+*/
+			/*
+			try
+            {
                 // JRA-10393: if Jira is running with a user based license, the active user count will be
                 // recalculated every time a user is created. Depending on how many users there are in the system
                 // this may incur a performance penalty. If this becomes a problem in the future, we will need
@@ -1288,14 +1276,15 @@ public class BugzillaImportBean
                         password,
                         loginNameEmail,
                         fullname);
-                userKeys.put(new Integer(bugzillaUserId), user);
+                userKeys.put(new Integer(phpBBUserId), user);
                 return true;
             }
             catch (final Exception exception)
             {
-                log("User: " + loginNameEmail + " not imported. An error occurred. " + exception.getMessage());
+                log("User: " + loginName + " not imported. An error occurred. " + exception.getMessage());
                 return false;
             }
+			*/
         }
         return false;
     }
@@ -1368,7 +1357,7 @@ public class BugzillaImportBean
         }
         else
         {
-            log("Attachments will not be imported from bugzilla since attachements are disabled in JIRA.");
+            log("Attachments will not be imported from phpBB since attachements are disabled in JIRA.");
         }
     }
 
@@ -1590,13 +1579,13 @@ public class BugzillaImportBean
         return (GenericValue) componentKeys.get(value);
     }
 
-    private User getUser(final int bugzillaUserId) throws SQLException
+    private User getUser(final int phpBBUserId) throws SQLException
     {
-        final Integer idInt = new Integer(bugzillaUserId);
+        final Integer idInt = new Integer(phpBBUserId);
         User user = (User) userKeys.get(idInt);
         if (user == null)
         {
-            createUser(bugzillaUserId);
+            createUser(phpBBUserId);
             user = (User) userKeys.get(idInt);
         }
         return user;
@@ -1610,24 +1599,6 @@ public class BugzillaImportBean
             padarray[i] = 'J';
         }
         return String.valueOf(padarray);
-    }
-
-    public String getFullNameFromEmail(final String email)
-    {
-        if (email == null)
-        {
-            return "";
-        }
-
-        final int index = email.indexOf("@");
-        if (index != -1)
-        {
-            return email.substring(0, index);
-        }
-        else
-        {
-            return "";
-        }
     }
 
     private void log(final String s)
@@ -1664,7 +1635,7 @@ public class BugzillaImportBean
     }
 
 	// DONE
-    public static List getAllBugzillaProjects(BugzillaConnectionBean connectionBean) throws java.sql.SQLException
+    public static List getAllPhpBBProjects(BugzillaConnectionBean connectionBean) throws java.sql.SQLException
     {
         PreparedStatement preparedStatement = null;
         try
@@ -1674,7 +1645,7 @@ public class BugzillaImportBean
             List projects = new ArrayList();
             while (resultSet.next())
             {
-				// Solved initial bug in Bugzilla importer - column_name wrong
+				// Solved initial bug in phpBB importer - column_name wrong
                 String project = resultSet.getString("project_name");
                 projects.add(project);
             }
@@ -1698,22 +1669,22 @@ public class BugzillaImportBean
 
     private void createOrFindCustomFields() throws GenericEntityException
     {
-        final CustomFieldType numericFieldCFType = customFieldManager.getCustomFieldType(CreateCustomField.FIELD_TYPE_PREFIX + BUGZILLA_ID_TYPE);
-        final CustomFieldSearcher numericSearcher = customFieldManager.getCustomFieldSearcher(CreateCustomField.FIELD_TYPE_PREFIX + BUGZILLA_ID_SEARCHER);
+        final CustomFieldType numericFieldCFType = customFieldManager.getCustomFieldType(CreateCustomField.FIELD_TYPE_PREFIX + PHPBB_ID_TYPE);
+        final CustomFieldSearcher numericSearcher = customFieldManager.getCustomFieldSearcher(CreateCustomField.FIELD_TYPE_PREFIX + PHPBB_ID_SEARCHER);
 
         if (numericFieldCFType != null)
         {
-            bugzillaIdCustomField = customFieldManager.getCustomFieldObjectByName(BUGZILLA_ID_CF_NAME);
-            if (bugzillaIdCustomField == null)
+            phpBBIdCustomField = customFieldManager.getCustomFieldObjectByName(PHPBB_ID_CF_NAME);
+            if (phpBBIdCustomField == null)
             {
-                bugzillaIdCustomField = customFieldManager.createCustomField(BUGZILLA_ID_CF_NAME, BUGZILLA_ID_CF_NAME, numericFieldCFType,
+                phpBBIdCustomField = customFieldManager.createCustomField(PHPBB_ID_CF_NAME, PHPBB_ID_CF_NAME, numericFieldCFType,
                     numericSearcher, EasyList.build(GlobalIssueContext.getInstance()), EasyList.buildNull());
-                externalUtils.associateCustomFieldWithScreen(bugzillaIdCustomField, null);
+                externalUtils.associateCustomFieldWithScreen(phpBBIdCustomField, null);
             }
         }
         else
         {
-            log("WARNING: FieldType '" + BUGZILLA_ID_TYPE + "' is required for Bugzilla Ids but has not been configured. ID fields will not be created");
+            log("WARNING: FieldType '" + PHPBB_ID_TYPE + "' is required for phpBB Ids but has not been configured. ID fields will not be created");
         }
 
     }
@@ -1780,14 +1751,14 @@ public class BugzillaImportBean
         return next;
     }
 
-    private static interface BugzillaMappingBean
+    private static interface PhpBBMappingBean
     {
         /**
-         * The JIRA issue type to use for Bugzilla bugs that are 'enhancements'.
+         * The JIRA issue type to use for phpBB bugs that are 'enhancements'.
          */
         String JIRA_ENHANCEMENT_ISSUE_TYPE_ID = "4";
         /**
-         * The JIRA issue type to use for normal Bugzilla bugs.
+         * The JIRA issue type to use for normal phpBB bugs.
          */
         String JIRA_BUG_ISSUE_TYPE_ID = "1";
 
@@ -1804,7 +1775,7 @@ public class BugzillaImportBean
         public String getProjectLead(String project);
     }
 
-public static abstract class DefaultBugzillaMappingBean implements BugzillaMappingBean
+public static abstract class DefaultPhpBBMappingBean implements PhpBBMappingBean
 {
 	private static Map priorityMap = new HashMap();
 	private static Map resolutionMap = new HashMap();
