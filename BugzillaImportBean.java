@@ -221,6 +221,7 @@ public class BugzillaImportBean
      * @param importer            User performing the import operation
      * @throws Exception if something goes wrong
      */
+	 // DONE
     public void create(final PhpBBMappingBean phpBBMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
     {
         importLog = new StringBuffer(1024 * 30);
@@ -337,6 +338,7 @@ public class BugzillaImportBean
         }
     }
 
+	// DONE
     private void createIssues(final Connection conn) throws Exception
     {
         int count = 0;
@@ -345,17 +347,23 @@ public class BugzillaImportBean
         // use the changeItem importLog to retrieve the list of issues previously imported from phpBB
         previouslyImportedKeys = retrieveImportedIssues();
 
-        String sql = "SELECT * FROM bugs where project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
+        String sql = "SELECT t.*, s.severity_name, v.version_name, st.status_name FROM trackers_ticket t, trackers_version v, trackers_status as st LEFT JOIN trackers_severity s ON (s.severity_id = t.severity_id) where st.status_id = t.status_id AND t.version_id = v.version_id AND t.ticket_private = 0 AND t.project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
 
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
         importedKeys = new HashMap();
 
-        final PreparedStatement attachPrepStatement = conn.prepareStatement("SELECT * FROM attachments WHERE bug_id = ? ORDER BY attach_id ASC");
-        final PreparedStatement linkDependsOnPrepStatement = conn.prepareStatement("SELECT dependson FROM dependencies WHERE blocked = ?");
-        final PreparedStatement linkBlocksPrepStatement = conn.prepareStatement("SELECT blocked FROM dependencies WHERE dependson = ?");
-        final PreparedStatement linkDuplicatesStatement = conn.prepareStatement("SELECT dupe FROM duplicates WHERE dupe_of = ?");
-        final PreparedStatement linkDuplicatedOfStatement = conn.prepareStatement("SELECT dupe_of FROM duplicates WHERE dupe = ?");
+		// ADD mimetype and attachment_data to table...
+		final PreparedStatement attachPrepStatement = conn.prepareStatement("SELECT a.attachment_id, a.attachment_size, a.attachment_title, a.mimetype, a.attachment_data, p.user_id, p.post_timestamp as creation_ts FROM trackers_attachment as a, trackers_post as p WHERE a.attachment_private = 0 AND a.post_id = p.post_id AND p.ticket_id = ? AND p.post_private = 0 ORDER BY a.attachment_id ASC");
+
+//		final PreparedStatement linkDependsOnPrepStatement = conn.prepareStatement("SELECT dependson FROM dependencies WHERE blocked = ?");
+//        final PreparedStatement linkBlocksPrepStatement = conn.prepareStatement("SELECT blocked FROM dependencies WHERE dependson = ?");
+		
+		// Ticket 'dupe' is a duplicate of ticket 'dupe_of' - inward
+		final PreparedStatement linkDuplicatesStatement = conn.prepareStatement("SELECT ticket_id as dupe FROM trackers_ticket WHERE duplicate_id = ? AND duplicate_id > 0");
+
+		// Ticket 'dupe_of' duplicates Ticket 'dupe' - outward
+		final PreparedStatement linkDuplicatedOfStatement = conn.prepareStatement("SELECT duplicate_id as dupe_of FROM trackers_ticket WHERE ticket_id = ? AND duplicate_id > 0");
 
         final IssueLinkType dependencyLinkType = createOrFindLinkType("Dependency", "depends on", "blocks");
         final IssueLinkType duplicateLinkType = createOrFindLinkType("Duplicate", "duplicates", "is duplicated by");
@@ -363,7 +371,7 @@ public class BugzillaImportBean
         truncSummaryIssueKeys.clear();
         while (resultSet.next())
         {
-            if (!onlyNewIssues || !previouslyImportedKeys.containsKey(new Integer(resultSet.getInt("bug_id"))))
+            if (!onlyNewIssues || !previouslyImportedKeys.containsKey(new Integer(resultSet.getInt("ticket_id"))))
             {
                 log("Importing Issue: \"" + resultSet.getString("short_desc") + "\"");
 
@@ -377,22 +385,23 @@ public class BugzillaImportBean
                     componentName = getComponentName(resultSet.getInt("component_id"));
                 }
 
-                final int bugId = resultSet.getInt("bug_id");
+                final int bugId = resultSet.getInt("ticket_id");
                 try
                 {
                     final GenericValue issue = createIssue(resultSet, getProjectName(resultSet, true), componentName);
                     createCommentAndDescription(bugId, issue);
                     // NOTE: this call has not been tested, we are waiting for test data, that is why it is surrounded
                     // in a conditional
+					// phpBB does not have a work history (hours worked on bugs)
                     if (workHistory)
                     {
-                        createWorkHistory(conn, bugId, issueFactory.getIssue(issue));
+//                        createWorkHistory(conn, bugId, issueFactory.getIssue(issue));
                     }
                     createAttachments(conn, attachPrepStatement, bugId, issue);
 
                     if (applicationProperties.getOption(APKeys.JIRA_OPTION_ISSUELINKING))
                     {
-                        createLinks(dependencyLinkType, "blocked", "dependson", linkBlocksPrepStatement, linkDependsOnPrepStatement, bugId, issue);
+//                        createLinks(dependencyLinkType, "blocked", "dependson", linkBlocksPrepStatement, linkDependsOnPrepStatement, bugId, issue);
                         createLinks(duplicateLinkType, "dupe", "dupe_of", linkDuplicatesStatement, linkDuplicatedOfStatement, bugId, issue);
                     }
                     else
@@ -419,8 +428,8 @@ public class BugzillaImportBean
 
         ImportUtils.closePS(preparedStatement);
         ImportUtils.closePS(attachPrepStatement);
-        ImportUtils.closePS(linkBlocksPrepStatement);
-        ImportUtils.closePS(linkDependsOnPrepStatement);
+//        ImportUtils.closePS(linkBlocksPrepStatement);
+//        ImportUtils.closePS(linkDependsOnPrepStatement);
     }
 
 	// DONE
@@ -439,20 +448,21 @@ public class BugzillaImportBean
         final Map fields = new HashMap();
         final MutableIssue issueObject = IssueImpl.getIssueObject(null);
         issueObject.setProject(getProject(projectName));
-        issueObject.setReporter(getUser(resultSet.getInt("reporter")));
-        issueObject.setAssignee(getUser(resultSet.getInt("assigned_to")));
-        if (resultSet.getString("bug_severity").equals("enhancement"))
+        issueObject.setReporter(getUser(resultSet.getInt("user_id")));
+        issueObject.setAssignee(getUser(resultSet.getInt("assigned_user")));
+/*        if (resultSet.getString("bug_severity").equals("enhancement"))
         {
             issueObject.setIssueTypeId(getEnhancementIssueTypeId());
         }
         else
         {
             issueObject.setIssueTypeId(getBugIssueTypeId());
-        }
+        }*/
+        issueObject.setIssueTypeId(getBugIssueTypeId());
 
         // truncate summary if necessary - JRA-12837
         final int summaryMaxLength = SummarySystemField.MAX_LEN.intValue();
-        String summary = resultSet.getString("short_desc");
+        String summary = resultSet.getString("ticket_title");
         final boolean isSummaryTruncated;
         if (summary.length() > summaryMaxLength)
         {
@@ -466,7 +476,7 @@ public class BugzillaImportBean
         issueObject.setSummary(summary);
 
         // Make sure that the priority is in lower case. JRA-9586
-        String priorityString = resultSet.getString("bug_severity");
+        String priorityString = resultSet.getString("severity_name");
         if (priorityString != null)
         {
             priorityString = priorityString.toLowerCase();
@@ -475,25 +485,25 @@ public class BugzillaImportBean
 
         final StringBuffer environment = new StringBuffer();
 
-        environment.append("Operating System: ").append(resultSet.getString("op_sys")).append("\nPlatform: ").append(
-            resultSet.getString("rep_platform"));
+        environment.append("PHP Environment: ").append(resultSet.getString("ticket_php")).append("\nDatabase: ").append(
+            resultSet.getString("ticket_dbms"));
 
-        final String url = resultSet.getString("bug_file_loc");
+/*        final String url = resultSet.getString("bug_file_loc");
         if (!"".equals(url))
         {
             environment.append("\nURL: ").append(url);
-        }
+        }*/
 
         issueObject.setEnvironment(environment.toString());
 
         // setup the associations with components/versions
-        final String version = resultSet.getString("version");
-        final String fixversion = resultSet.getString("target_milestone");
-        createVersionComponentAssociations(issueObject, projectName, version, componentName, fixversion);
+        final String version = resultSet.getString("version_name");
+//        final String fixversion = resultSet.getString("target_milestone");
+        createVersionComponentAssociations(issueObject, projectName, version, componentName);
 
         // NOTE: this call has not been tested, we are waiting for test data, that is why it is surrounded
         // in a conditional
-        if (workHistory && !resultSet.getString("estimated_time").equals(""))
+/*        if (workHistory && !resultSet.getString("estimated_time").equals(""))
         {
             long time_original_estimate, time_remaining;
             time_original_estimate = (long) (3600.0 * resultSet.getFloat("estimated_time"));
@@ -501,7 +511,7 @@ public class BugzillaImportBean
 
             issueObject.setOriginalEstimate(new Long(time_original_estimate));
             issueObject.setTimeSpent(new Long(time_remaining));
-        }
+        }*/
         fields.put("issue", issueObject);
         final GenericValue origianlIssueGV = ComponentManager.getInstance().getIssueManager().getIssue(issueObject.getId());
         fields.put(WorkflowFunctionUtils.ORIGINAL_ISSUE_KEY, IssueImpl.getIssueObject(origianlIssueGV));
@@ -513,7 +523,7 @@ public class BugzillaImportBean
             truncSummaryIssueKeys.add(issue.getString("key"));
         }
 
-        final String phpBBStatus = resultSet.getString("bug_status").toLowerCase();
+        final String phpBBStatus = resultSet.getString("status_name").toLowerCase();
         String jiraBugStatus = phpBBMappingBean.getStatus(phpBBStatus);
         boolean foundStatus = true;
         // JRA-10017 - always fall back to the open status if we can't find the correct status
@@ -531,7 +541,7 @@ public class BugzillaImportBean
         }
         else
         {
-            final String resolution = phpBBMappingBean.getResolution(resultSet.getString("resolution").toLowerCase());
+            final String resolution = phpBBMappingBean.getResolution(resultSet.getString("status_name").toLowerCase());
             issue.set(IssueFieldConstants.RESOLUTION, resolution);
             //If the issue is resolved, also set the resolution date (the mapping may return null meaning unresolved).
             //We'll use the last updated time for this, since phpBB doesn't seem to store a resolution date.
@@ -541,7 +551,7 @@ public class BugzillaImportBean
             }
         }
 
-        issue.set(IssueFieldConstants.CREATED, resultSet.getTimestamp("creation_ts"));
+        issue.set(IssueFieldConstants.CREATED, resultSet.getTimestamp("timestamp_created"));
         //Previously the import always set the updated date to the time of the import.  This has been
         //changed to use the last updated time from the database.
         issue.set(IssueFieldConstants.UPDATED, resultSet.getTimestamp("delta_ts"));
@@ -617,10 +627,9 @@ public class BugzillaImportBean
      * @param component  component
      * @param fixVersion fix version
      */
-    private void createVersionComponentAssociations(final MutableIssue issue, final String project, final String version, final String component, final String fixVersion)
+    private void createVersionComponentAssociations(final MutableIssue issue, final String project, final String version, final String component)
     {
         final Version verKey = getVersion(project + ":" + version);
-        final Version fixverKey = getVersion(project + ":" + fixVersion);
         if (verKey != null)
         {
             final Version affectsVersion = versionManager.getVersion(verKey.getLong("id"));
@@ -632,17 +641,6 @@ public class BugzillaImportBean
             {
                 log4jLog.error("Could not find version '" + project + ":" + version + "' to associate with issue " + issue);
             }
-        }
-
-        if (fixverKey != null)
-        {
-            final Version fixVer = versionManager.getVersion(fixverKey.getLong("id"));
-            issue.setFixVersions(EasyList.build(fixVer));
-        }
-        else
-        {
-            // Ignore. Bugzilla (2.1.18) sets target_milestone="---" for issues without a target milestone, and as '---' is a
-            // nonexistent version, we get to here.
         }
 
         final GenericValue comp = getComponent(project + ":" + component);
@@ -731,7 +729,7 @@ public class BugzillaImportBean
         cacheManager.flush(CacheManager.ISSUE_CACHE, issue); // Flush the cache, otherwise later when we look up the issue we'll get something stale. JRA-5542
     }
 
-    // NOTE: this is untested code submitted by Vincent Fiano, we still need some test data to run through this
+    /* NOTE: this is untested code submitted by Vincent Fiano, we still need some test data to run through this
     private void createWorkHistory(final Connection conn, final int bug_id, final Issue issue) throws SQLException, JiraException
     {
         final PreparedStatement preparedStatement = conn.prepareStatement("SELECT * FROM bugs_activity WHERE bug_id = ? AND fieldid = 45 ORDER BY bug_when ASC");
@@ -747,7 +745,7 @@ public class BugzillaImportBean
                     (long) (3600.0 * resultSet.getFloat("added"))));
             worklogManager.create(user, worklog, null, false);
         }
-    }
+    }*/
 
     /**
      * Store the original phpBB bug id in the change history.
@@ -764,12 +762,13 @@ public class BugzillaImportBean
         ChangeLogUtils.createChangeGroup(importer, issue, issue, changeItems, true);
     }
 
+	// DONE
     private void createWatchers(final Connection conn) throws SQLException
     {
         log("\n\nImporting Watchers");
 
         int count = 0;
-        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT who FROM cc WHERE bug_id = ?");
+        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT user_id FROM trackers_ticket_watch WHERE ticket_id = ?");
         final Iterator phpBBBugIdIter = previouslyImportedKeys.keySet().iterator();
         // for each imported bug..
         while (phpBBBugIdIter.hasNext())
@@ -782,7 +781,7 @@ public class BugzillaImportBean
             {
                 try
                 {
-                    final User watcher = getUser(rs.getInt("who")); // find or create the watcher
+                    final User watcher = getUser(rs.getInt("user_id")); // find or create the watcher
                     final Long jiraBugId = (Long) previouslyImportedKeys.get(phpBBBugId);
                     final GenericValue issue = issueManager.getIssue(jiraBugId);
                     watcherManager.startWatching(watcher, issue);
@@ -814,6 +813,7 @@ public class BugzillaImportBean
      * @return map of previously imported keys (old to new)
      * @throws GenericEntityException if cannot read from change items
      */
+	 // DONE
     protected Map retrieveImportedIssues() throws GenericEntityException
     {
         final Map previousKeys = new HashMap();
@@ -828,12 +828,13 @@ public class BugzillaImportBean
         return previousKeys;
     }
 
+	// DONE
     private void createComponents(final Connection conn) throws SQLException
     {
         int componentCount = 0;
         log("\n\nImporting Components from project(s) " + selectedProjects + "\n");
 
-        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT * FROM components where project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ");
+        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT * FROM trackers_component where project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ");
         final ResultSet resultSet = preparedStatement.executeQuery();
         String componentLead = null;
         String component = null;
@@ -843,7 +844,7 @@ public class BugzillaImportBean
             {
                 // lookup the component lead (only available in Enterprise)
                 componentLead = getComponentLead(PHPBB_PROJECTS_LEADER_ID);
-                component = resultSet.getString("name");
+                component = resultSet.getString("component_name");
             }
             catch (final SQLException ex)
             {
@@ -862,7 +863,7 @@ public class BugzillaImportBean
             }
             log("Importing Component: " + component);
 
-            final boolean created = createComponent(getProjectName(resultSet, false), component, componentLead, resultSet.getString("description"));
+            final boolean created = createComponent(getProjectName(resultSet, false), component, componentLead, resultSet.getString("component_name"));
             if (created)
             {
                 componentCount++;
@@ -899,7 +900,8 @@ public class BugzillaImportBean
      * @return product name
      * @throws SQLException if reading from result set fails
      */
-    private String getProjectName(final ResultSet resultSet, final boolean isPhpBBBug) throws SQLException
+	// DONE
+	private String getProjectName(final ResultSet resultSet, final boolean isPhpBBBug) throws SQLException
     {
         String projectName;
         try
@@ -927,6 +929,7 @@ public class BugzillaImportBean
         return projectName;
     }
 
+	// DONE
     private boolean createComponent(final String projectName, final String componentName, final String componentLead, final String description)
     {
         final GenericValue project = getProject(projectName);
@@ -966,20 +969,21 @@ public class BugzillaImportBean
         log("\n\nImporting Versions from project " + selectedProjects + "\n");
 
         createVersionFromVersionTable(conn);
-        createVersionFromBugsTable(conn);
+//        createVersionFromBugsTable(conn);
     }
 
+	// DONE
     private void createVersionFromVersionTable(final Connection conn) throws SQLException
     {
         int count = 0;
 
-        final String sql = "select * from versions where project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
+        final String sql = "select * from trackers_version where project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
 
         while (resultSet.next())
         {
-            final String versionName = resultSet.getString("value");
+            final String versionName = resultSet.getString("version_name");
             log("Importing Version: " + versionName);
 
             final boolean created = createVersion(getProjectName(resultSet, false), versionName);
@@ -991,7 +995,7 @@ public class BugzillaImportBean
         ImportUtils.closePS(preparedStatement);
         log(count + " versions imported from phpBB from the versions table.");
     }
-
+/*
     private void createVersionFromBugsTable(final Connection conn) throws SQLException
     {
         int count = 0;
@@ -1019,13 +1023,14 @@ public class BugzillaImportBean
         log(count + " versions imported from phpBB from the bugs table.");
         ImportUtils.closePS(preparedStatement);
     }
-
+*/
     /**
      * Returns comma-separated text values of a list of objects.
      *
      * @param coll collection of objects to comma separate
      * @return comma separated list of Strings of objects from the given collection
      */
+	// DONE
     public String commaSeparate(final Collection coll)
     {
         if (coll.size() == 0)
@@ -1045,6 +1050,7 @@ public class BugzillaImportBean
         return buf.toString();
     }
 
+	// DONE
     private boolean createVersion(final String project, final String versionName)
     {
         final Version existingVersion = versionManager.getVersion(getProject(project), versionName);
@@ -1299,7 +1305,7 @@ public class BugzillaImportBean
                 resultSet = attachPrepStatement.executeQuery();
                 while (resultSet.next())
                 {
-                    String fileName = resultSet.getString("filename");
+                    String fileName = resultSet.getString("attachment_title");
                     if (fileName.lastIndexOf('\\') > -1)
                     {
                         fileName = fileName.substring(fileName.lastIndexOf('\\') + 1);
@@ -1313,19 +1319,21 @@ public class BugzillaImportBean
                     byte[] fileBytes;
                     try
                     {
-                        fileBytes = resultSet.getBytes("thedata");
+                        fileBytes = resultSet.getBytes("attachment_data");
                     }
                     catch (final SQLException e)
                     {
+						/*
                         final PreparedStatement ps = conn.prepareStatement("select thedata from attach_data where id = ?");
                         ps.setInt(1, resultSet.getInt("attach_id"));
                         final ResultSet attachmentRS = ps.executeQuery();
                         attachmentRS.next();
                         fileBytes = attachmentRS.getBytes("thedata");
-                        attachmentRS.close();
+                        attachmentRS.close();*/
+						fileBytes = "";
                     }
 
-                    final int submitterId = resultSet.getInt("submitter_id");
+                    final int submitterId = resultSet.getInt("user_id");
                     final Attachment attachment = attachmentManager.createAttachment(issue, getUser(submitterId), resultSet.getString("mimetype"),
                         fileName, new Long(fileBytes.length), null, UtilDateTime.nowTimestamp());
                     //we need to set the created date back to when it was created in the original system.
@@ -1440,6 +1448,7 @@ public class BugzillaImportBean
      *
      * @throws GenericEntityException if database read or write fails
      */
+	 // DONE
     private void rewriteBugLinks() throws GenericEntityException
     {
         log("Rewriting bug links for " + importedKeys.size() + " issues.");
@@ -1491,6 +1500,7 @@ public class BugzillaImportBean
      * @param parentIssueKey Issue this text came from (purely for logging).
      * @return str, with links rewritten.
      */
+	 // DONE
     public String rewriteBugLinkInText(final String str, final String parentIssueKey)
     {
         Pattern pattern = null;
