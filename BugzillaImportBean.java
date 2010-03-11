@@ -102,6 +102,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+* REQUIRED:
+* trackers_attachment: mimetype, attachment_data
+* trackers_post: post_text_wiki (wiki representation of post_text)
+*/
+
 public class BugzillaImportBean
 {
     private static final Logger log4jLog = Logger.getLogger(BugzillaImportBean.class);
@@ -164,6 +170,7 @@ public class BugzillaImportBean
     private PreparedStatement componentPS;
     private PreparedStatement projectPS;
     private PreparedStatement commentPS;
+	private PreparedStatement deltaPS;
     private final IssueFactory issueFactory;
     private final WorklogManager worklogManager;
 
@@ -316,6 +323,9 @@ public class BugzillaImportBean
 		// We get all ticket posts (and exclude the one for the ticket itself later)
 		// We do not import private tickets
         commentPS = conn.prepareStatement("SELECT * FROM trackers_post WHERE ticket_id = ? AND post_private = 0 ORDER BY post_timestamp ASC");
+
+		// Last access time for a ticket...
+		deltaPS = conn.prepareStatement("SELECT MAX(p.post_timestamp) as delta_ts FROM trackers_post p, trackers_ticket t WHERE t.ticket_id = p.ticket_id AND t.ticket_id = ?");
     }
 
     private void closePreparedStatements() throws SQLException
@@ -336,6 +346,10 @@ public class BugzillaImportBean
         {
             commentPS.close();
         }
+		if (deltaPS != null)
+		{
+			deltaPS.close();
+		}
     }
 
 	// DONE
@@ -443,6 +457,7 @@ public class BugzillaImportBean
         return name;
     }
 
+	// DONE
     private GenericValue createIssue(final ResultSet resultSet, final String projectName, final String componentName) throws IndexException, SQLException, GenericEntityException, CreateException
     {
         final Map fields = new HashMap();
@@ -534,6 +549,16 @@ public class BugzillaImportBean
         }
         issue.set(IssueFieldConstants.STATUS, jiraBugStatus);
 
+		// Get delta_ts
+		deltaPS.setInt(1, bug_id);
+		final int delta_ts = 0;
+		final ResultSet deltaResult = deltaTS.executeQuery();
+		while (deltaResult.next())
+		{
+			delta_ts = deltaResult.getTimestamp('delta_ts');
+		}
+		deltaResult.close();
+
         // make sure no resolution if the issue is unresolved
         if (!"5".equals(jiraBugStatus) && !"6".equals(jiraBugStatus))
         {
@@ -547,14 +572,14 @@ public class BugzillaImportBean
             //We'll use the last updated time for this, since phpBB doesn't seem to store a resolution date.
             if(resolution != null)
             {
-                issue.set(IssueFieldConstants.RESOLUTION_DATE, resultSet.getTimestamp("delta_ts"));
+                issue.set(IssueFieldConstants.RESOLUTION_DATE, delta_ts);
             }
         }
 
         issue.set(IssueFieldConstants.CREATED, resultSet.getTimestamp("timestamp_created"));
         //Previously the import always set the updated date to the time of the import.  This has been
         //changed to use the last updated time from the database.
-        issue.set(IssueFieldConstants.UPDATED, resultSet.getTimestamp("delta_ts"));
+        issue.set(IssueFieldConstants.UPDATED, delta_ts);
         issue.store();
         setCurrentWorkflowStep(issue);
 
@@ -688,7 +713,7 @@ public class BugzillaImportBean
         if (DescriptionResultSet.next())
         {
 			// @todo introduce new column for HTML? I do not think JIRA is able to parse BBCode. ;)
-			description = DescriptionResultSet.getString('post_text');
+			description = DescriptionResultSet.getString('post_text_wiki');
 			postid = DescriptionResultSet.getInt('post_id');
 		}
 		DescriptionResultSet.close();
@@ -717,7 +742,7 @@ public class BugzillaImportBean
                 {*/
                     final String author = user.getName();
                     final Date timePerformed = resultSet.getTimestamp("post_timestamp);
-                    commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text"), null, null, timePerformed,
+                    commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, null, timePerformed,
                         timePerformed, false, false);
 //                }
             }
@@ -753,6 +778,7 @@ public class BugzillaImportBean
      * @param bug_id bug id
      * @param issue  issue
      */
+	// DONE
     private void createChangeHistory(final int bug_id, final GenericValue issue)
     {
         // create a change group and change item for each issue imported to record the original phpBB id.
@@ -1293,6 +1319,7 @@ public class BugzillaImportBean
         return false;
     }
 
+	// DONE
     private void createAttachments(final Connection conn, final PreparedStatement attachPrepStatement, final int bug_id, final GenericValue issue) throws Exception
     {
         if (applicationProperties.getOption(APKeys.JIRA_OPTION_ALLOWATTACHMENTS))
