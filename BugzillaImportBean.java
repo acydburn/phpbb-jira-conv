@@ -1013,7 +1013,7 @@ public class BugzillaImportBean
     {
         int count = 0;
 
-        final String sql = "select * from trackers_version where project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
+        final String sql = "select v.*, p.project_name from trackers_version v, trackers_project p where v.project_id = p.project_id AND v.project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
 
