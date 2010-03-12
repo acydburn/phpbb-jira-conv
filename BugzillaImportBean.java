@@ -156,7 +156,7 @@ public class BugzillaImportBean
     private Map importedKeys = new HashMap(); // Map of phpBB ids (Integer) to Jira ids (Long) of issues imported during this run
     private String selectedProjects;
     private User importer;
-    private PhpBBMappingBean phpbbMappingBean;
+    private phpBBMappingBean phpBBMappingBean;
     private boolean reuseExistingUsers;
     private boolean workHistory;
     private final Map projectToPhpBBIdMap = new HashMap();
@@ -229,7 +229,7 @@ public class BugzillaImportBean
      * @throws Exception if something goes wrong
      */
 	 // DONE
-    public void create(final PhpBBMappingBean phpBBMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
+    public void create(final phpBBMappingBean phpBBMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
     {
         importLog = new StringBuffer(1024 * 30);
         if (projectNames.length == 0)
@@ -555,7 +555,7 @@ public class BugzillaImportBean
 		final ResultSet deltaResult = deltaTS.executeQuery();
 		while (deltaResult.next())
 		{
-			delta_ts = deltaResult.getTimestamp('delta_ts');
+			delta_ts = deltaResult.getTimestamp("delta_ts");
 		}
 		deltaResult.close();
 
@@ -611,22 +611,22 @@ public class BugzillaImportBean
 
     private String getEnhancementIssueTypeId()
     {
-        if (constantsManager.getIssueType(PhpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID) != null)
+        if (constantsManager.getIssueType(phpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID) != null)
         {
-            return PhpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID;
+            return phpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID;
         }
         else
         {
-            log("ERROR: JIRA does not have an enhancement issue type with id " + PhpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID + "; creating as Bug instead");
+            log("ERROR: JIRA does not have an enhancement issue type with id " + phpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID + "; creating as Bug instead");
             return getBugIssueTypeId();
         }
     }
 
     private String getBugIssueTypeId()
     {
-        if (constantsManager.getIssueType(PhpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID) != null)
+        if (constantsManager.getIssueType(phpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID) != null)
         {
-            return PhpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID;
+            return phpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID;
         }
         else
         {
@@ -636,7 +636,7 @@ public class BugzillaImportBean
                 throw new RuntimeException("No JIRA issue types defined!");
             }
             final String firstIssueType = ((GenericValue) issueTypes.iterator().next()).getString("id");
-            log("ERROR: JIRA does not have a bug issue type with id " + PhpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID + "; using first found issue type " + firstIssueType + " instead.");
+            log("ERROR: JIRA does not have a bug issue type with id " + phpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID + "; using first found issue type " + firstIssueType + " instead.");
             return firstIssueType;
         }
 
@@ -713,8 +713,8 @@ public class BugzillaImportBean
         if (DescriptionResultSet.next())
         {
 			// @todo introduce new column for HTML? I do not think JIRA is able to parse BBCode. ;)
-			description = DescriptionResultSet.getString('post_text_wiki');
-			postid = DescriptionResultSet.getInt('post_id');
+			description = DescriptionResultSet.getString("post_text_wiki");
+			postid = DescriptionResultSet.getInt("post_id");
 		}
 		DescriptionResultSet.close();
 
@@ -724,7 +724,7 @@ public class BugzillaImportBean
         while (resultSet.next())
         {
 			// Skip if the comment is the original description post_id
-			if (resultSet.getInt('post_id') == postid)
+			if (resultSet.getInt("post_id") == postid)
 			{
 				
 			}
@@ -741,7 +741,7 @@ public class BugzillaImportBean
                 else
                 {*/
                     final String author = user.getName();
-                    final Date timePerformed = resultSet.getTimestamp("post_timestamp);
+                    final Date timePerformed = resultSet.getTimestamp("post_timestamp");
                     commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, null, timePerformed,
                         timePerformed, false, false);
 //                }
@@ -1787,7 +1787,7 @@ public class BugzillaImportBean
         return next;
     }
 
-    private static interface PhpBBMappingBean
+    private static interface phpBBMappingBean
     {
         /**
          * The JIRA issue type to use for phpBB bugs that are 'enhancements'.
@@ -1811,7 +1811,7 @@ public class BugzillaImportBean
         public String getProjectLead(String project);
     }
 
-public static abstract class DefaultPhpBBMappingBean implements PhpBBMappingBean
+public static abstract class DefaultphpBBMappingBean implements phpBBMappingBean
 {
 	private static Map priorityMap = new HashMap();
 	private static Map resolutionMap = new HashMap();
