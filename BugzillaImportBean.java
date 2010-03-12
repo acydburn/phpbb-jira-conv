@@ -371,7 +371,7 @@ public class BugzillaImportBean
         // use the changeItem importLog to retrieve the list of issues previously imported from phpBB
         previouslyImportedKeys = retrieveImportedIssues();
 
-        String sql = "SELECT t.*, s.severity_name, v.version_name, st.status_name FROM trackers_ticket t, trackers_version v, trackers_status as st LEFT JOIN trackers_severity s ON (s.severity_id = t.severity_id) where st.status_id = t.status_id AND t.version_id = v.version_id AND t.ticket_private = 0 AND t.project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
+        String sql = "SELECT t.*, s.severity_name, v.version_name, st.status_name FROM (trackers_ticket t, trackers_version v, trackers_status as st) LEFT JOIN trackers_severity s ON (s.severity_id = t.severity_id) where st.status_id = t.status_id AND t.version_id = v.version_id AND t.ticket_private = 0 AND t.project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
 
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
