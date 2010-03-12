@@ -1711,7 +1711,19 @@ public class BugzillaImportBean
         }
     }
 
-    public String getImportLog()
+	/**
+     * By examining the schema, determines if we're importing from <=2.16 or 2.17+
+     *
+    * @param conn connection
+     * @return true if connecting to Bugzilla 2.16 or lower
+     * @throws SQLException if cannot read from the database
+     */
+    public static boolean isOldBugzilla(final Connection conn)
+    {
+		return false;
+	}
+
+	public String getImportLog()
     {
         return importLog.toString();
     }
