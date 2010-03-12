@@ -474,7 +474,14 @@ public class BugzillaImportBean
         final MutableIssue issueObject = IssueImpl.getIssueObject(null);
         issueObject.setProject(getProject(projectName));
         issueObject.setReporter(getUser(resultSet.getInt("user_id")));
-        issueObject.setAssignee(getUser(resultSet.getInt("assigned_user")));
+
+		final int assignedUser = resultSet.getInt("assigned_user");
+
+		if (assignedUser)
+		{
+			issueObject.setAssignee(getUser(assignedUser));
+		}
+
 /*        if (resultSet.getString("bug_severity").equals("enhancement"))
         {
             issueObject.setIssueTypeId(getEnhancementIssueTypeId());
