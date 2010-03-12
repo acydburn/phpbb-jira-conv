@@ -1635,6 +1635,39 @@ public class BugzillaImportBean
         return user;
     }
 
+	private String getProjectKey(final String name, int keylength) throws GenericEntityException
+	{
+		String potentialKey;
+		if (name.length() < keylength)
+		{
+			potentialKey = name + generatePaddingString(keylength - name.length());
+		}
+		else
+		{
+			potentialKey = name.substring(0, keylength);
+		}
+
+		if (projectManager.getProjectObjByKey(potentialKey) != null)
+		{
+			return getProjectKey(name, ++keylength);
+		}
+		else
+		{
+			return potentialKey;
+		}
+	}
+
+	public String getProjectKey(final String name) throws GenericEntityException
+	{
+		final Project project = projectManager.getProjectObjByName(name);
+		if (project == null)
+		{
+			return getProjectKey(name.toUpperCase(), 3); //minimum key length of 3
+		}
+
+		return project.getKey();
+	}
+
     private String generatePaddingString(final int length)
     {
         final char[] padarray = new char[length];
