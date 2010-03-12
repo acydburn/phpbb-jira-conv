@@ -317,7 +317,7 @@ public class BugzillaImportBean
 		componentPS = conn.prepareStatement("select component_name from trackers_component where component_id = ?");
 
 		// Get Project name
-		projectPS = conn.prepareStatement("select project_name from trackers_projects where project_id = ?");
+		projectPS = conn.prepareStatement("select project_name from trackers_project where project_id = ?");
 
 		// Prepared Statement for profiles
 		profilePS = conn.prepareStatement("SELECT user_id, username, user_email FROM community_users WHERE user_id = ?");
