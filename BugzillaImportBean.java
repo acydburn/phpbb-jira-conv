@@ -397,7 +397,7 @@ public class BugzillaImportBean
         {
             if (!onlyNewIssues || !previouslyImportedKeys.containsKey(new Integer(resultSet.getInt("ticket_id"))))
             {
-                log("Importing Issue: \"" + resultSet.getString("short_desc") + "\"");
+                log("Importing Issue: \"" + resultSet.getString("ticket_title") + "\"");
 
                 String componentName;
                 try
@@ -445,7 +445,7 @@ public class BugzillaImportBean
             }
             else
             {
-                log("Not re-importing issue: \"" + resultSet.getString("short_desc") + "\"");
+                log("Not re-importing issue: \"" + resultSet.getString("ticket_title") + "\"");
             }
         }
         log(count + " issues imported from phpBB.");
