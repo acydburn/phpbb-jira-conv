@@ -90,6 +90,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -156,7 +157,7 @@ public class BugzillaImportBean
     private Map importedKeys = new HashMap(); // Map of phpBB ids (Integer) to Jira ids (Long) of issues imported during this run
     private String selectedProjects;
     private User importer;
-    private BugzillaMappingBean bugzillaMappingBean;
+    private bugzillaMappingBean bugzillaMappingBean;
     private boolean reuseExistingUsers;
     private boolean workHistory;
     private final Map projectToPhpBBIdMap = new HashMap();
@@ -171,6 +172,7 @@ public class BugzillaImportBean
     private PreparedStatement projectPS;
     private PreparedStatement commentPS;
 	private PreparedStatement deltaPS;
+	private PreparedStatement ticketDescriptionPS;
     private final IssueFactory issueFactory;
     private final WorklogManager worklogManager;
 
@@ -229,7 +231,7 @@ public class BugzillaImportBean
      * @throws Exception if something goes wrong
      */
 	 // DONE
-    public void create(final BugzillaMappingBean bugzillaMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
+    public void create(final bugzillaMappingBean bugzillaMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
     {
         importLog = new StringBuffer(1024 * 30);
         if (projectNames.length == 0)
@@ -326,6 +328,9 @@ public class BugzillaImportBean
 
 		// Last access time for a ticket...
 		deltaPS = conn.prepareStatement("SELECT MAX(p.post_timestamp) as delta_ts FROM trackers_post p, trackers_ticket t WHERE t.ticket_id = p.ticket_id AND t.ticket_id = ?");
+
+		// Ticket description
+		ticketDescriptionPS = conn.prepareStatement("SELECT p.* FROM trackers_ticket as t, trackers_post as p  WHERE t.ticket_id = ? AND p.post_id = t.post_id");
     }
 
     private void closePreparedStatements() throws SQLException
@@ -349,6 +354,10 @@ public class BugzillaImportBean
 		if (deltaPS != null)
 		{
 			deltaPS.close();
+		}
+		if (ticketDescriptionPS != null)
+		{
+			ticketDescriptionPS.close();
 		}
     }
 
@@ -550,12 +559,12 @@ public class BugzillaImportBean
         issue.set(IssueFieldConstants.STATUS, jiraBugStatus);
 
 		// Get delta_ts
-		deltaPS.setInt(1, bug_id);
-		final int delta_ts = 0;
-		final ResultSet deltaResult = deltaTS.executeQuery();
-		while (deltaResult.next())
+		deltaPS.setInt(1, resultSet.getInt("ticket_id"));
+		Timestamp delta_ts = UtilDateTime.nowTimestamp();
+		final ResultSet deltaResult = deltaPS.executeQuery();
+		if (deltaResult.next())
 		{
-			delta_ts = deltaResult.getTimestamp('delta_ts');
+			delta_ts = deltaResult.getTimestamp("delta_ts");
 		}
 		deltaResult.close();
 
@@ -611,22 +620,22 @@ public class BugzillaImportBean
 
     private String getEnhancementIssueTypeId()
     {
-        if (constantsManager.getIssueType(BugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID) != null)
+        if (constantsManager.getIssueType(bugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID) != null)
         {
-            return BugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID;
+            return bugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID;
         }
         else
         {
-            log("ERROR: JIRA does not have an enhancement issue type with id " + BugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID + "; creating as Bug instead");
+            log("ERROR: JIRA does not have an enhancement issue type with id " + bugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID + "; creating as Bug instead");
             return getBugIssueTypeId();
         }
     }
 
     private String getBugIssueTypeId()
     {
-        if (constantsManager.getIssueType(BugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID) != null)
+        if (constantsManager.getIssueType(bugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID) != null)
         {
-            return BugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID;
+            return bugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID;
         }
         else
         {
@@ -636,7 +645,7 @@ public class BugzillaImportBean
                 throw new RuntimeException("No JIRA issue types defined!");
             }
             final String firstIssueType = ((GenericValue) issueTypes.iterator().next()).getString("id");
-            log("ERROR: JIRA does not have a bug issue type with id " + BugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID + "; using first found issue type " + firstIssueType + " instead.");
+            log("ERROR: JIRA does not have a bug issue type with id " + bugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID + "; using first found issue type " + firstIssueType + " instead.");
             return firstIssueType;
         }
 
@@ -706,15 +715,14 @@ public class BugzillaImportBean
 		String description = null;
 		int postid = 0;
 
-        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT p.* FROM trackers_ticket as t, trackers_post as p  WHERE t.ticket_id = ? AND p.post_id = t.post_id");
-        preparedStatement.setInt(1, bug_id);
+		ticketDescriptionPS.setInt(1, bug_id);
 
-        final DescriptionResultSet resultSet = preparedStatement.executeQuery();
+        final ResultSet DescriptionResultSet = ticketDescriptionPS.executeQuery();
         if (DescriptionResultSet.next())
         {
 			// @todo introduce new column for HTML? I do not think JIRA is able to parse BBCode. ;)
-			description = DescriptionResultSet.getString('post_text_wiki');
-			postid = DescriptionResultSet.getInt('post_id');
+			description = DescriptionResultSet.getString("post_text_wiki");
+			postid = DescriptionResultSet.getInt("post_id");
 		}
 		DescriptionResultSet.close();
 
@@ -724,7 +732,7 @@ public class BugzillaImportBean
         while (resultSet.next())
         {
 			// Skip if the comment is the original description post_id
-			if (resultSet.getInt('post_id') == postid)
+			if (resultSet.getInt("post_id") == postid)
 			{
 				
 			}
@@ -741,7 +749,7 @@ public class BugzillaImportBean
                 else
                 {*/
                     final String author = user.getName();
-                    final Date timePerformed = resultSet.getTimestamp("post_timestamp);
+                    final Date timePerformed = resultSet.getTimestamp("post_timestamp");
                     commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, null, timePerformed,
                         timePerformed, false, false);
 //                }
@@ -1162,19 +1170,19 @@ public class BugzillaImportBean
         }
         else
         {
-            GenericValue project;
+            GenericValue newProject;
             try
             {
 				// @Deprecated
-                project = ProjectUtils.createProject(EasyMap.build("key", projectKey, "lead",
+                newProject = ProjectUtils.createProject(EasyMap.build("key", projectKey, "lead",
                     PHPBB_PROJECTS_LEADER_NAME, "name", project, "description", description));
 
                 //Add the default permission scheme for this project
-                permissionSchemeManager.addDefaultSchemeToProject(project);
+                permissionSchemeManager.addDefaultSchemeToProject(newProject);
                 // Add the default issue type screen scheme for this project
-                issueTypeScreenSchemeManager.associateWithDefaultScheme(project);
+                issueTypeScreenSchemeManager.associateWithDefaultScheme(newProject);
                 // JRA-11466 - MySQL is case-insensitive, so store project keys in lowercase
-                projectKeys.put(project.toLowerCase(), project);
+                projectKeys.put(project.toLowerCase(), newProject);
                 return true;
             }
             catch (final Exception e)
@@ -1357,7 +1365,8 @@ public class BugzillaImportBean
                         attachmentRS.next();
                         fileBytes = attachmentRS.getBytes("thedata");
                         attachmentRS.close();*/
-						fileBytes = "";
+						resultSet.close();
+						return;
                     }
 
                     final int submitterId = resultSet.getInt("user_id");
@@ -1787,7 +1796,7 @@ public class BugzillaImportBean
         return next;
     }
 
-    private static interface BugzillaMappingBean
+    private static interface bugzillaMappingBean
     {
         /**
          * The JIRA issue type to use for phpBB bugs that are 'enhancements'.
@@ -1811,7 +1820,7 @@ public class BugzillaImportBean
         public String getProjectLead(String project);
     }
 
-public static abstract class DefaultBugzillaMappingBean implements BugzillaMappingBean
+public static abstract class DefaultBugzillaMappingBean implements bugzillaMappingBean
 {
 	private static Map priorityMap = new HashMap();
 	private static Map resolutionMap = new HashMap();
