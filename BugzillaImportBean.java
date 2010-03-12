@@ -1118,7 +1118,7 @@ public class BugzillaImportBean
 	private void createProjects(final String[] projectNames, final Connection conn) throws SQLException
     {
         int count = 0;
-        log("\n\nImporting project(s) " + ProjectNames);
+        log("\n\nImporting project(s) " + selectedProjects);
 
         PreparedStatement preparedStatement;
         ResultSet resultSet;
@@ -1856,7 +1856,9 @@ public class BugzillaImportBean
          */
         String JIRA_BUG_ISSUE_TYPE_ID = "1";
 
-        public String getPriority(String originalPriority);
+        public String getProjectKey(String project);
+
+		public String getPriority(String originalPriority);
 
         public String getResolution(String originalResolution);
 
@@ -1868,6 +1870,7 @@ public class BugzillaImportBean
 
         public String getProjectLead(String project);
     }
+
 
 public static abstract class DefaultBugzillaMappingBean implements BugzillaMappingBean
 {
