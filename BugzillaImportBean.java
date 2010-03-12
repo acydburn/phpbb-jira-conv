@@ -156,15 +156,15 @@ public class BugzillaImportBean
     private Map importedKeys = new HashMap(); // Map of phpBB ids (Integer) to Jira ids (Long) of issues imported during this run
     private String selectedProjects;
     private User importer;
-    private PhpBBMappingBean phpbbMappingBean;
+    private BugzillaMappingBean bugzillaMappingBean;
     private boolean reuseExistingUsers;
     private boolean workHistory;
     private final Map projectToPhpBBIdMap = new HashMap();
     private boolean onlyNewIssues;
 
-    public static final String PHPBB_ID_TYPE = "importid";
-    public static final String PHPBB_ID_SEARCHER = "exactnumber";
-    public static final String PHPBB_ID_CF_NAME = "Old phpBB Bug Id";
+    public static final String BUGZILLA_ID_TYPE = "importid";
+    public static final String BUGZILLA_ID_SEARCHER = "exactnumber";
+    public static final String BUGZILLA_ID_CF_NAME = "Old phpBB Bug Id";
     private CustomField phpBBIdCustomField;
     private PreparedStatement profilePS;
     private PreparedStatement componentPS;
@@ -229,7 +229,7 @@ public class BugzillaImportBean
      * @throws Exception if something goes wrong
      */
 	 // DONE
-    public void create(final PhpBBMappingBean phpBBMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
+    public void create(final BugzillaMappingBean bugzillaMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
     {
         importLog = new StringBuffer(1024 * 30);
         if (projectNames.length == 0)
@@ -237,7 +237,7 @@ public class BugzillaImportBean
             log("No projects selected for import");
             return;
         }
-        this.phpBBMappingBean = phpBBMappingBean;
+        this.bugzillaMappingBean = bugzillaMappingBean;
         this.reuseExistingUsers = reuseExistingUsers;
         this.onlyNewIssues = onlyNewIssues;
         this.workHistory = workHistory;
@@ -496,7 +496,7 @@ public class BugzillaImportBean
         {
             priorityString = priorityString.toLowerCase();
         }
-        issueObject.setPriorityId(phpBBMappingBean.getPriority(priorityString));
+        issueObject.setPriorityId(bugzillaMappingBean.getPriority(priorityString));
 
         final StringBuffer environment = new StringBuffer();
 
@@ -539,7 +539,7 @@ public class BugzillaImportBean
         }
 
         final String phpBBStatus = resultSet.getString("status_name").toLowerCase();
-        String jiraBugStatus = phpBBMappingBean.getStatus(phpBBStatus);
+        String jiraBugStatus = bugzillaMappingBean.getStatus(phpBBStatus);
         boolean foundStatus = true;
         // JRA-10017 - always fall back to the open status if we can't find the correct status
         if (jiraBugStatus == null)
@@ -566,7 +566,7 @@ public class BugzillaImportBean
         }
         else
         {
-            final String resolution = phpBBMappingBean.getResolution(resultSet.getString("status_name").toLowerCase());
+            final String resolution = bugzillaMappingBean.getResolution(resultSet.getString("status_name").toLowerCase());
             issue.set(IssueFieldConstants.RESOLUTION, resolution);
             //If the issue is resolved, also set the resolution date (the mapping may return null meaning unresolved).
             //We'll use the last updated time for this, since phpBB doesn't seem to store a resolution date.
@@ -611,22 +611,22 @@ public class BugzillaImportBean
 
     private String getEnhancementIssueTypeId()
     {
-        if (constantsManager.getIssueType(PhpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID) != null)
+        if (constantsManager.getIssueType(BugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID) != null)
         {
-            return PhpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID;
+            return BugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID;
         }
         else
         {
-            log("ERROR: JIRA does not have an enhancement issue type with id " + PhpBBMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID + "; creating as Bug instead");
+            log("ERROR: JIRA does not have an enhancement issue type with id " + BugzillaMappingBean.JIRA_ENHANCEMENT_ISSUE_TYPE_ID + "; creating as Bug instead");
             return getBugIssueTypeId();
         }
     }
 
     private String getBugIssueTypeId()
     {
-        if (constantsManager.getIssueType(PhpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID) != null)
+        if (constantsManager.getIssueType(BugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID) != null)
         {
-            return PhpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID;
+            return BugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID;
         }
         else
         {
@@ -636,7 +636,7 @@ public class BugzillaImportBean
                 throw new RuntimeException("No JIRA issue types defined!");
             }
             final String firstIssueType = ((GenericValue) issueTypes.iterator().next()).getString("id");
-            log("ERROR: JIRA does not have a bug issue type with id " + PhpBBMappingBean.JIRA_BUG_ISSUE_TYPE_ID + "; using first found issue type " + firstIssueType + " instead.");
+            log("ERROR: JIRA does not have a bug issue type with id " + BugzillaMappingBean.JIRA_BUG_ISSUE_TYPE_ID + "; using first found issue type " + firstIssueType + " instead.");
             return firstIssueType;
         }
 
@@ -694,8 +694,8 @@ public class BugzillaImportBean
         // retrieve the wfCurrentStep for this issue and change it
         final Collection wfCurrentStepCollection = genericDelegator.findByAnd("OSCurrentStep", EasyMap.build("entryId", issue.getLong("workflowId")));
         final GenericValue wfCurrentStep = (GenericValue) getOnly(wfCurrentStepCollection);
-        wfCurrentStep.set("stepId", phpBBMappingBean.getWorkflowStep(issue.getString("status")));
-        wfCurrentStep.set("status", phpBBMappingBean.getWorkflowStatus(issue.getString("status")));
+        wfCurrentStep.set("stepId", bugzillaMappingBean.getWorkflowStep(issue.getString("status")));
+        wfCurrentStep.set("status", bugzillaMappingBean.getWorkflowStatus(issue.getString("status")));
         wfCurrentStep.store();
     }
 
@@ -1670,7 +1670,7 @@ public class BugzillaImportBean
     }
 
 	// DONE
-    public static List getAllPhpBBProjects(BugzillaConnectionBean connectionBean) throws java.sql.SQLException
+    public static List getAllBugzillaProjects(BugzillaConnectionBean connectionBean) throws java.sql.SQLException
     {
         PreparedStatement preparedStatement = null;
         try
@@ -1705,22 +1705,22 @@ public class BugzillaImportBean
 	// DONE
     private void createOrFindCustomFields() throws GenericEntityException
     {
-        final CustomFieldType numericFieldCFType = customFieldManager.getCustomFieldType(CreateCustomField.FIELD_TYPE_PREFIX + PHPBB_ID_TYPE);
-        final CustomFieldSearcher numericSearcher = customFieldManager.getCustomFieldSearcher(CreateCustomField.FIELD_TYPE_PREFIX + PHPBB_ID_SEARCHER);
+        final CustomFieldType numericFieldCFType = customFieldManager.getCustomFieldType(CreateCustomField.FIELD_TYPE_PREFIX + BUGZILLA_ID_TYPE);
+        final CustomFieldSearcher numericSearcher = customFieldManager.getCustomFieldSearcher(CreateCustomField.FIELD_TYPE_PREFIX + BUGZILLA_ID_SEARCHER);
 
         if (numericFieldCFType != null)
         {
-            phpBBIdCustomField = customFieldManager.getCustomFieldObjectByName(PHPBB_ID_CF_NAME);
+            phpBBIdCustomField = customFieldManager.getCustomFieldObjectByName(BUGZILLA_ID_CF_NAME);
             if (phpBBIdCustomField == null)
             {
-                phpBBIdCustomField = customFieldManager.createCustomField(PHPBB_ID_CF_NAME, PHPBB_ID_CF_NAME, numericFieldCFType,
+                phpBBIdCustomField = customFieldManager.createCustomField(BUGZILLA_ID_CF_NAME, BUGZILLA_ID_CF_NAME, numericFieldCFType,
                     numericSearcher, EasyList.build(GlobalIssueContext.getInstance()), EasyList.buildNull());
                 externalUtils.associateCustomFieldWithScreen(phpBBIdCustomField, null);
             }
         }
         else
         {
-            log("WARNING: FieldType '" + PHPBB_ID_TYPE + "' is required for phpBB Ids but has not been configured. ID fields will not be created");
+            log("WARNING: FieldType '" + BUGZILLA_ID_TYPE + "' is required for phpBB Ids but has not been configured. ID fields will not be created");
         }
 
     }
@@ -1787,7 +1787,7 @@ public class BugzillaImportBean
         return next;
     }
 
-    private static interface PhpBBMappingBean
+    private static interface BugzillaMappingBean
     {
         /**
          * The JIRA issue type to use for phpBB bugs that are 'enhancements'.
@@ -1811,7 +1811,7 @@ public class BugzillaImportBean
         public String getProjectLead(String project);
     }
 
-public static abstract class DefaultPhpBBMappingBean implements PhpBBMappingBean
+public static abstract class DefaultBugzillaMappingBean implements BugzillaMappingBean
 {
 	private static Map priorityMap = new HashMap();
 	private static Map resolutionMap = new HashMap();
