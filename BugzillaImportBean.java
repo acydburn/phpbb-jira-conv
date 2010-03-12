@@ -171,6 +171,7 @@ public class BugzillaImportBean
     private PreparedStatement projectPS;
     private PreparedStatement commentPS;
 	private PreparedStatement deltaPS;
+	private PreparedStatement ticketDescriptionPS;
     private final IssueFactory issueFactory;
     private final WorklogManager worklogManager;
 
@@ -326,6 +327,9 @@ public class BugzillaImportBean
 
 		// Last access time for a ticket...
 		deltaPS = conn.prepareStatement("SELECT MAX(p.post_timestamp) as delta_ts FROM trackers_post p, trackers_ticket t WHERE t.ticket_id = p.ticket_id AND t.ticket_id = ?");
+
+		// Ticket description
+		ticketDescriptionPS = conn.prepareStatement("SELECT p.* FROM trackers_ticket as t, trackers_post as p  WHERE t.ticket_id = ? AND p.post_id = t.post_id");
     }
 
     private void closePreparedStatements() throws SQLException
@@ -349,6 +353,10 @@ public class BugzillaImportBean
 		if (deltaPS != null)
 		{
 			deltaPS.close();
+		}
+		if (ticketDescriptionPS != null)
+		{
+			ticketDescriptionPS.close();
 		}
     }
 
@@ -550,9 +558,9 @@ public class BugzillaImportBean
         issue.set(IssueFieldConstants.STATUS, jiraBugStatus);
 
 		// Get delta_ts
-		deltaPS.setInt(1, bug_id);
-		final int delta_ts = 0;
-		final ResultSet deltaResult = deltaTS.executeQuery();
+		deltaPS.setInt(1, resultSet.getInt("ticket_id"));
+		Timestamp delta_ts = 0;
+		final ResultSet deltaResult = deltaPS.executeQuery();
 		while (deltaResult.next())
 		{
 			delta_ts = deltaResult.getTimestamp("delta_ts");
@@ -706,10 +714,9 @@ public class BugzillaImportBean
 		String description = null;
 		int postid = 0;
 
-        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT p.* FROM trackers_ticket as t, trackers_post as p  WHERE t.ticket_id = ? AND p.post_id = t.post_id");
-        preparedStatement.setInt(1, bug_id);
+		ticketDescriptionPS.setInt(1, bug_id);
 
-        final DescriptionResultSet resultSet = preparedStatement.executeQuery();
+        final ResultSet DescriptionResultSet = ticketDescriptionPS.executeQuery();
         if (DescriptionResultSet.next())
         {
 			// @todo introduce new column for HTML? I do not think JIRA is able to parse BBCode. ;)
@@ -1162,19 +1169,19 @@ public class BugzillaImportBean
         }
         else
         {
-            GenericValue project;
+            GenericValue newProject;
             try
             {
 				// @Deprecated
-                project = ProjectUtils.createProject(EasyMap.build("key", projectKey, "lead",
+                newProject = ProjectUtils.createProject(EasyMap.build("key", projectKey, "lead",
                     PHPBB_PROJECTS_LEADER_NAME, "name", project, "description", description));
 
                 //Add the default permission scheme for this project
-                permissionSchemeManager.addDefaultSchemeToProject(project);
+                permissionSchemeManager.addDefaultSchemeToProject(newProject);
                 // Add the default issue type screen scheme for this project
-                issueTypeScreenSchemeManager.associateWithDefaultScheme(project);
+                issueTypeScreenSchemeManager.associateWithDefaultScheme(newProject);
                 // JRA-11466 - MySQL is case-insensitive, so store project keys in lowercase
-                projectKeys.put(project.toLowerCase(), project);
+                projectKeys.put(project.toLowerCase(), newProject);
                 return true;
             }
             catch (final Exception e)
@@ -1357,7 +1364,6 @@ public class BugzillaImportBean
                         attachmentRS.next();
                         fileBytes = attachmentRS.getBytes("thedata");
                         attachmentRS.close();*/
-						fileBytes = "";
                     }
 
                     final int submitterId = resultSet.getInt("user_id");
