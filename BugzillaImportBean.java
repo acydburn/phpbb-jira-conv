@@ -66,6 +66,7 @@ import com.opensymphony.user.EntityNotFoundException;
 import com.opensymphony.user.User;
 import com.opensymphony.util.TextUtils;
 import org.apache.commons.collections.set.ListOrderedSet;
+import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.log4j.Logger;
 import org.apache.log4j.Priority;
@@ -319,7 +320,7 @@ public class BugzillaImportBean
 		projectPS = conn.prepareStatement("select project_name from trackers_projects where project_id = ?");
 
 		// Prepared Statement for profiles
-		profilePS = conn.prepareStatement("SELECT user_id, username, user_email, username as realname FROM community_users WHERE user_id = ?");
+		profilePS = conn.prepareStatement("SELECT user_id, username, user_email FROM community_users WHERE user_id = ?");
 
 		// Get comment by ticket id
 		// We get all ticket posts (and exclude the one for the ticket itself later)
@@ -917,6 +918,7 @@ public class BugzillaImportBean
         if (componentLeadResultSet.next())
         {
             componentLead = componentLeadResultSet.getString("username");
+			componentLead = StringEscapeUtils.unescapeHtml(componentLead);
         }
         return componentLead;
     }
@@ -1218,7 +1220,10 @@ public class BugzillaImportBean
         {
 			// Username is our phpBB Username...
 			loginName = getUsernameFromPhpBBProfile(resultSet);
-            fullname = TextUtils.noNull(resultSet.getString("realname")).trim();
+            fullname = TextUtils.noNull(resultSet.getString("username")).trim();
+
+			loginName = StringEscapeUtils.unescapeHtml(loginName);
+			fullname = StringEscapeUtils.unescapeHtml(fullname);
 
             final int user_id = resultSet.getInt("user_id");
 
@@ -2014,22 +2019,22 @@ private class UserNameCollator
 */
 
 		// Ticket History
-		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_history AS h ON (h.user_id = u.user_id) JOIN trackers_ticket as t ON (h.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+		// result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_history AS h ON (h.user_id = u.user_id) JOIN trackers_ticket as t ON (h.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
 		// Trackers Posts
-		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_post AS p ON (p.user_id = u.user_id) JOIN trackers_ticket as t ON (p.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+		result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_post AS p ON (p.user_id = u.user_id AND p.post_private = 0) JOIN trackers_ticket as t ON (p.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
 		// Watchers/Project
-		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_project_watch AS pw ON (pw.user_id = u.user_id) WHERE pw.project_id IN (" + projectIds + ") GROUP BY 1"));
+		result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_project_watch AS pw ON (pw.user_id = u.user_id) WHERE pw.project_id IN (" + projectIds + ") GROUP BY 1"));
 
 		// Watchers/Ticket
-		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_ticket_watch AS tw ON (tw.user_id = u.user_id) JOIN trackers_ticket as t ON (tw.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+		result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_ticket_watch AS tw ON (tw.user_id = u.user_id) JOIN trackers_ticket as t ON (tw.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 		
 		// ticket reporters
-		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_ticket AS t ON (t.user_id = u.user_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+		result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_ticket AS t ON (t.user_id = u.user_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
 		// Ticket assignees
-		result.addAll(getUsers("SELECT u.username, u.username as realname FROM community_users AS u JOIN trackers_ticket AS t ON (t.assigned_user = u.user_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+		result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_ticket AS t ON (t.assigned_user = u.user_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
 
 		return result;
@@ -2046,7 +2051,7 @@ private class UserNameCollator
 			final Set result = new HashSet();
 			while (rs.next())
 			{
-				result.add(new ExternalUser(rs.getString(1), rs.getString(2), rs.getString(1)));
+				result.add(new ExternalUser(StringEscapeUtils.unescapeHtml(rs.getString(1)), StringEscapeUtils.unescapeHtml(rs.getString(1)), StringEscapeUtils.unescapeHtml(rs.getString(2))));
 			}
 			return result;
 		}
