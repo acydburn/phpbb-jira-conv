@@ -90,6 +90,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -559,9 +560,9 @@ public class BugzillaImportBean
 
 		// Get delta_ts
 		deltaPS.setInt(1, resultSet.getInt("ticket_id"));
-		Timestamp delta_ts = 0;
+		Timestamp delta_ts = UtilDateTime.nowTimestamp();
 		final ResultSet deltaResult = deltaPS.executeQuery();
-		while (deltaResult.next())
+		if (deltaResult.next())
 		{
 			delta_ts = deltaResult.getTimestamp("delta_ts");
 		}
@@ -1364,6 +1365,8 @@ public class BugzillaImportBean
                         attachmentRS.next();
                         fileBytes = attachmentRS.getBytes("thedata");
                         attachmentRS.close();*/
+						resultSet.close();
+						return;
                     }
 
                     final int submitterId = resultSet.getInt("user_id");
