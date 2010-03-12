@@ -158,7 +158,7 @@ public class BugzillaImportBean
     private Map importedKeys = new HashMap(); // Map of phpBB ids (Integer) to Jira ids (Long) of issues imported during this run
     private String selectedProjects;
     private User importer;
-    private bugzillaMappingBean bugzillaMappingBean;
+    private BugzillaMappingBean bugzillaMappingBean;
     private boolean reuseExistingUsers;
     private boolean workHistory;
     private final Map projectToPhpBBIdMap = new HashMap();
@@ -232,7 +232,7 @@ public class BugzillaImportBean
      * @throws Exception if something goes wrong
      */
 	 // DONE
-    public void create(final bugzillaMappingBean bugzillaMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
+    public void create(final BugzillaMappingBean bugzillaMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
     {
         importLog = new StringBuffer(1024 * 30);
         if (projectNames.length == 0)
@@ -1118,7 +1118,7 @@ public class BugzillaImportBean
 	private void createProjects(final String[] projectNames, final Connection conn) throws SQLException
     {
         int count = 0;
-        log("\n\nImporting project(s) " + selectedProjects);
+        log("\n\nImporting project(s) " + ProjectNames);
 
         PreparedStatement preparedStatement;
         ResultSet resultSet;
@@ -1141,9 +1141,8 @@ public class BugzillaImportBean
             log("Importing Project: " + project);
 
             final String description = resultSet.getString("project_description");
-			final String projectKey = resultSet.getString("project_name_unix");
 
-            final boolean created = createProject(project, projectKey, description);
+            final boolean created = createProject(project, description);
 
             if (created)
             {
@@ -1155,7 +1154,7 @@ public class BugzillaImportBean
     }
 
 	// DONE
-    private boolean createProject(final String project, final String projectKey, final String description)
+    private boolean createProject(final String project, final String description)
     {
         if (project == null)
         {
@@ -1176,7 +1175,7 @@ public class BugzillaImportBean
             try
             {
 				// @Deprecated
-                newProject = ProjectUtils.createProject(EasyMap.build("key", projectKey, "lead",
+				newProject = ProjectUtils.createProject(EasyMap.build("key", bugzillaMappingBean.getProjectKey(project), "lead",
                     PHPBB_PROJECTS_LEADER_NAME, "name", project, "description", description));
 
                 //Add the default permission scheme for this project
@@ -1846,7 +1845,7 @@ public class BugzillaImportBean
         return next;
     }
 
-    private static interface bugzillaMappingBean
+    private static interface BugzillaMappingBean
     {
         /**
          * The JIRA issue type to use for phpBB bugs that are 'enhancements'.
@@ -1870,7 +1869,7 @@ public class BugzillaImportBean
         public String getProjectLead(String project);
     }
 
-public static abstract class DefaultBugzillaMappingBean implements bugzillaMappingBean
+public static abstract class DefaultBugzillaMappingBean implements BugzillaMappingBean
 {
 	private static Map priorityMap = new HashMap();
 	private static Map resolutionMap = new HashMap();
