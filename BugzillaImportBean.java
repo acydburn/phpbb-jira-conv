@@ -166,13 +166,12 @@ public class BugzillaImportBean
 
     public static final String BUGZILLA_ID_TYPE = "importid";
     public static final String BUGZILLA_ID_SEARCHER = "exactnumber";
-    public static final String BUGZILLA_ID_CF_NAME = "Old phpBB Bug Id";
+    public static final String BUGZILLA_ID_CF_NAME = "phpBB Import Key";
     private CustomField phpBBIdCustomField;
     private PreparedStatement profilePS;
     private PreparedStatement componentPS;
     private PreparedStatement projectPS;
     private PreparedStatement commentPS;
-	private PreparedStatement deltaPS;
 	private PreparedStatement ticketDescriptionPS;
     private final IssueFactory issueFactory;
     private final WorklogManager worklogManager;
@@ -327,9 +326,6 @@ public class BugzillaImportBean
 		// We do not import private tickets
         commentPS = conn.prepareStatement("SELECT * FROM trackers_post WHERE ticket_id = ? AND post_private = 0 ORDER BY post_timestamp ASC");
 
-		// Last access time for a ticket...
-		deltaPS = conn.prepareStatement("SELECT MAX(p.post_timestamp) as delta_ts FROM trackers_post p, trackers_ticket t WHERE t.ticket_id = p.ticket_id AND t.ticket_id = ?");
-
 		// Ticket description
 		ticketDescriptionPS = conn.prepareStatement("SELECT p.* FROM trackers_ticket as t, trackers_post as p  WHERE t.ticket_id = ? AND p.post_id = t.post_id");
     }
@@ -352,10 +348,6 @@ public class BugzillaImportBean
         {
             commentPS.close();
         }
-		if (deltaPS != null)
-		{
-			deltaPS.close();
-		}
 		if (ticketDescriptionPS != null)
 		{
 			ticketDescriptionPS.close();
@@ -378,7 +370,7 @@ public class BugzillaImportBean
         importedKeys = new HashMap();
 
 		// ADD mimetype and attachment_data to table...
-		final PreparedStatement attachPrepStatement = conn.prepareStatement("SELECT a.attachment_id, a.attachment_size, a.attachment_title, a.mimetype, a.attachment_data, p.user_id, p.post_timestamp as creation_ts FROM trackers_attachment as a, trackers_post as p WHERE a.attachment_private = 0 AND a.post_id = p.post_id AND p.ticket_id = ? AND p.post_private = 0 ORDER BY a.attachment_id ASC");
+		final PreparedStatement attachPrepStatement = conn.prepareStatement("SELECT a.attachment_id, a.attachment_size, a.attachment_title, a.mimetype, a.attachment_data, p.user_id, p.created_ts FROM trackers_attachment as a, trackers_post as p WHERE a.attachment_private = 0 AND a.post_id = p.post_id AND p.ticket_id = ? AND p.post_private = 0 ORDER BY a.attachment_id ASC");
 
 //		final PreparedStatement linkDependsOnPrepStatement = conn.prepareStatement("SELECT dependson FROM dependencies WHERE blocked = ?");
 //        final PreparedStatement linkBlocksPrepStatement = conn.prepareStatement("SELECT blocked FROM dependencies WHERE dependson = ?");
@@ -477,7 +469,7 @@ public class BugzillaImportBean
 
 		final int assignedUser = resultSet.getInt("assigned_user");
 
-		if (assignedUser)
+		if (assignedUser > 0)
 		{
 			issueObject.setAssignee(getUser(assignedUser));
 		}
@@ -494,7 +486,7 @@ public class BugzillaImportBean
 
         // truncate summary if necessary - JRA-12837
         final int summaryMaxLength = SummarySystemField.MAX_LEN.intValue();
-        String summary = resultSet.getString("ticket_title");
+        String summary = StringEscapeUtils.unescapeHtml(resultSet.getString("ticket_title"));
         final boolean isSummaryTruncated;
         if (summary.length() > summaryMaxLength)
         {
@@ -517,8 +509,13 @@ public class BugzillaImportBean
 
         final StringBuffer environment = new StringBuffer();
 
-        environment.append("PHP Environment: ").append(resultSet.getString("ticket_php")).append("\nDatabase: ").append(
-            resultSet.getString("ticket_dbms"));
+		String ticket_php = resultSet.getString("ticket_php");
+		String ticket_dbms = resultSet.getString("ticket_dbms");
+
+		if (ticket_php != null || ticket_dbms != null)
+		{
+	        environment.append("PHP Environment: ").append(ticket_php).append("\nDatabase: ").append(ticket_dbms);
+		}
 
 /*        final String url = resultSet.getString("bug_file_loc");
         if (!"".equals(url))
@@ -566,16 +563,6 @@ public class BugzillaImportBean
         }
         issue.set(IssueFieldConstants.STATUS, jiraBugStatus);
 
-		// Get delta_ts
-		deltaPS.setInt(1, resultSet.getInt("ticket_id"));
-		Timestamp delta_ts = UtilDateTime.nowTimestamp();
-		final ResultSet deltaResult = deltaPS.executeQuery();
-		if (deltaResult.next())
-		{
-			delta_ts = deltaResult.getTimestamp("delta_ts");
-		}
-		deltaResult.close();
-
         // make sure no resolution if the issue is unresolved
         if (!"5".equals(jiraBugStatus) && !"6".equals(jiraBugStatus))
         {
@@ -589,14 +576,14 @@ public class BugzillaImportBean
             //We'll use the last updated time for this, since phpBB doesn't seem to store a resolution date.
             if(resolution != null)
             {
-                issue.set(IssueFieldConstants.RESOLUTION_DATE, delta_ts);
+                issue.set(IssueFieldConstants.RESOLUTION_DATE, resultSet.getTimestamp("delta_ts"));
             }
         }
 
-        issue.set(IssueFieldConstants.CREATED, resultSet.getTimestamp("timestamp_created"));
+        issue.set(IssueFieldConstants.CREATED, resultSet.getTimestamp("created_ts"));
         //Previously the import always set the updated date to the time of the import.  This has been
         //changed to use the last updated time from the database.
-        issue.set(IssueFieldConstants.UPDATED, delta_ts);
+        issue.set(IssueFieldConstants.UPDATED, resultSet.getTimestamp("delta_ts"));
         issue.store();
         setCurrentWorkflowStep(issue);
 
@@ -757,9 +744,9 @@ public class BugzillaImportBean
                 else
                 {*/
                     final String author = user.getName();
-                    final Date timePerformed = resultSet.getTimestamp("post_timestamp");
-                    commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, null, timePerformed,
-                        timePerformed, false, false);
+
+                    commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, null, resultSet.getTimestamp("created_ts"),
+                        resultSet.getTimestamp("created_ts"), false, false);
 //                }
             }
         }
@@ -1351,7 +1338,7 @@ public class BugzillaImportBean
                 resultSet = attachPrepStatement.executeQuery();
                 while (resultSet.next())
                 {
-                    String fileName = resultSet.getString("attachment_title");
+					String fileName = resultSet.getString("attachment_title");
                     if (fileName.lastIndexOf('\\') > -1)
                     {
                         fileName = fileName.substring(fileName.lastIndexOf('\\') + 1);
@@ -1362,29 +1349,34 @@ public class BugzillaImportBean
                         fileName = fileName.substring(fileName.lastIndexOf('/') + 1);
                     }
 
+					log("Importing attachment " + fileName + " for bug " + bug_id + ".");
+
                     byte[] fileBytes;
-                    try
-                    {
+/*                    try
+                    {*/
                         fileBytes = resultSet.getBytes("attachment_data");
-                    }
+/*                    }
                     catch (final SQLException e)
                     {
-						/*
-                        final PreparedStatement ps = conn.prepareStatement("select thedata from attach_data where id = ?");
+                      final PreparedStatement ps = conn.prepareStatement("select thedata from attach_data where id = ?");
                         ps.setInt(1, resultSet.getInt("attach_id"));
                         final ResultSet attachmentRS = ps.executeQuery();
                         attachmentRS.next();
                         fileBytes = attachmentRS.getBytes("thedata");
-                        attachmentRS.close();*/
+                        attachmentRS.close();
 						resultSet.close();
 						return;
                     }
+					*/
 
                     final int submitterId = resultSet.getInt("user_id");
                     final Attachment attachment = attachmentManager.createAttachment(issue, getUser(submitterId), resultSet.getString("mimetype"),
-                        fileName, new Long(fileBytes.length), null, UtilDateTime.nowTimestamp());
-                    //we need to set the created date back to when it was created in the original system.
-                    attachment.getGenericValue().set("created", resultSet.getTimestamp("creation_ts"));
+                        fileName, new Long(fileBytes.length), null, resultSet.getTimestamp("created_ts"));
+						
+					// UtilDateTime.nowTimestamp());
+
+					//we need to set the created date back to when it was created in the original system.
+                    attachment.getGenericValue().set("created", resultSet.getTimestamp("created_ts"));
                     attachment.store();
 
                     CoreFactory.getGenericDelegator().storeAll(EasyList.build(issue));
