@@ -363,7 +363,7 @@ public class BugzillaImportBean
         // use the changeItem importLog to retrieve the list of issues previously imported from phpBB
         previouslyImportedKeys = retrieveImportedIssues();
 
-        String sql = "SELECT t.*, s.severity_name, v.version_name, st.status_name FROM (trackers_ticket t, trackers_version v, trackers_status as st) LEFT JOIN trackers_severity s ON (s.severity_id = t.severity_id) where st.status_id = t.status_id AND t.version_id = v.version_id AND t.ticket_private = 0 AND t.project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ";
+        String sql = "SELECT t.*, s.severity_name, v.version_name, st.status_name FROM (trackers_ticket t, trackers_version v, trackers_status as st) LEFT JOIN trackers_severity s ON (s.severity_id = t.severity_id) where st.status_id = t.status_id AND t.version_id = v.version_id AND t.ticket_private = 0 AND t.project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ORDER BY t.ticket_id ASC ";
 
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
@@ -387,9 +387,11 @@ public class BugzillaImportBean
         truncSummaryIssueKeys.clear();
         while (resultSet.next())
         {
-            if (!onlyNewIssues || !previouslyImportedKeys.containsKey(new Integer(resultSet.getInt("ticket_id"))))
+            final int bugId = resultSet.getInt("ticket_id");
+
+			if (!onlyNewIssues || !previouslyImportedKeys.containsKey(new Integer(resultSet.getInt("ticket_id"))))
             {
-                log("Importing Issue: \"" + resultSet.getString("ticket_title") + "\"");
+                log("Importing Ticket ID " + bugId);
 
                 String componentName;
                 try
@@ -401,7 +403,6 @@ public class BugzillaImportBean
                     componentName = getComponentName(resultSet.getInt("component_id"));
                 }
 
-                final int bugId = resultSet.getInt("ticket_id");
                 try
                 {
                     final GenericValue issue = createIssue(resultSet, getProjectName(resultSet, true), componentName);
@@ -437,7 +438,7 @@ public class BugzillaImportBean
             }
             else
             {
-                log("Not re-importing issue: \"" + resultSet.getString("ticket_title") + "\"");
+                log("Not re-importing Ticket ID " + bugId);
             }
         }
         log(count + " issues imported from phpBB.");
@@ -797,7 +798,7 @@ public class BugzillaImportBean
         log("\n\nImporting Watchers");
 
         int count = 0;
-        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT user_id FROM trackers_ticket_watch WHERE ticket_id = ?");
+        final PreparedStatement preparedStatement = conn.prepareStatement("SELECT user_id FROM trackers_ticket_watch WHERE ticket_id = ? AND user_id <> 1");
         final Iterator phpBBBugIdIter = previouslyImportedKeys.keySet().iterator();
         // for each imported bug..
         while (phpBBBugIdIter.hasNext())
@@ -1269,7 +1270,7 @@ public class BugzillaImportBean
 			// User exists in JIRA
 			if (user != null)
             {
-                log("\tUser: " + loginName + " already exists. Not imported");
+                log("\texists - Not imported");
                 userKeys.put(new Integer(phpBBUserId), user);
                 return reuseExistingUsers;
             }
@@ -1349,7 +1350,7 @@ public class BugzillaImportBean
                         fileName = fileName.substring(fileName.lastIndexOf('/') + 1);
                     }
 
-					log("Importing attachment " + fileName + " for bug " + bug_id + ".");
+					log("Importing attachment for bug " + bug_id + ".");
 
                     byte[] fileBytes;
 /*                    try
