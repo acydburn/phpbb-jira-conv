@@ -62,6 +62,8 @@ import com.atlassian.jira.user.util.UserUtil;
 import com.atlassian.jira.web.action.admin.customfields.CreateCustomField;
 import com.atlassian.jira.web.action.util.BugzillaConnectionBean;
 import com.atlassian.jira.workflow.WorkflowFunctionUtils;
+import com.atlassian.jira.security.roles.ProjectRoleImpl;
+import com.atlassian.jira.security.roles.DefaultProjectRoleManager;
 import com.opensymphony.user.EntityNotFoundException;
 import com.opensymphony.user.User;
 import com.opensymphony.util.TextUtils;
@@ -323,7 +325,7 @@ public class BugzillaImportBean
         // Get comment by ticket id
         // We get all ticket posts (and exclude the one for the ticket itself later)
         // We do not import private tickets
-        commentPS = conn.prepareStatement("SELECT * FROM trackers_post WHERE ticket_id = ? AND post_private = 0 ORDER BY post_timestamp ASC");
+        commentPS = conn.prepareStatement("SELECT * FROM trackers_post WHERE ticket_id = ? ORDER BY post_timestamp ASC");
 
         // Ticket description
         ticketDescriptionPS = conn.prepareStatement("SELECT p.* FROM trackers_ticket as t, trackers_post as p  WHERE t.ticket_id = ? AND p.post_id = t.post_id");
@@ -517,7 +519,10 @@ public class BugzillaImportBean
             environment.append("\nURL: ").append(url);
         }*/
 
-        issueObject.setEnvironment(environment.toString());
+        if (!"".equals(environment.toString()))
+        {
+            issueObject.setEnvironment(environment.toString());
+        }
 
         // setup the associations with components/versions
         final String version = resultSet.getString("version_name");
@@ -749,8 +754,16 @@ public class BugzillaImportBean
                 {*/
                     final String author = user.getName();
 
-                    commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, null, resultSet.getTimestamp("created_ts"),
-                        resultSet.getTimestamp("created_ts"), false, false);
+                    if (resultSet.getInt("post_private") == 1)
+                    {
+                        // Private post only visible by the developers role...
+                        final DefaultProjectRoleManager ProjectRole = null;
+                        commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, ProjectRole.getProjectRole("Developers").getId(), resultSet.getTimestamp("created_ts"), resultSet.getTimestamp("created_ts"), false, false);
+                    }
+                    else
+                    {
+                        commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, null, resultSet.getTimestamp("created_ts"), resultSet.getTimestamp("created_ts"), false, false);
+                    }
 //                }
             }
         }
@@ -2015,7 +2028,7 @@ private class UserNameCollator
         // result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_history AS h ON (h.user_id = u.user_id) JOIN trackers_ticket as t ON (h.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
         // Trackers Posts
-        result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_post AS p ON (p.user_id = u.user_id AND p.post_private = 0) JOIN trackers_ticket as t ON (p.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+        result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_post AS p ON (p.user_id = u.user_id) JOIN trackers_ticket as t ON (p.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
         // Watchers/Project
         result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_project_watch AS pw ON (pw.user_id = u.user_id) WHERE pw.project_id IN (" + projectIds + ") GROUP BY 1"));
