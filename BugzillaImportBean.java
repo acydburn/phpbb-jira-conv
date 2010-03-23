@@ -172,7 +172,7 @@ public class BugzillaImportBean
     private PreparedStatement componentPS;
     private PreparedStatement projectPS;
     private PreparedStatement commentPS;
-	private PreparedStatement ticketDescriptionPS;
+    private PreparedStatement ticketDescriptionPS;
     private final IssueFactory issueFactory;
     private final WorklogManager worklogManager;
 
@@ -280,8 +280,8 @@ public class BugzillaImportBean
                 ImportUtils.setIndexIssues(true);
             }
 
-			// Votes are not used in the phpBB.com database
-			// createVotes(conn);
+            // Votes are not used in the phpBB.com database
+            // createVotes(conn);
 
             createWatchers(conn);
             if (reindex)
@@ -312,21 +312,21 @@ public class BugzillaImportBean
     private void createPreparedStatements(final Connection conn) throws SQLException
     {
         // SQL query to get component name from id
-		componentPS = conn.prepareStatement("select component_name from trackers_component where component_id = ?");
+        componentPS = conn.prepareStatement("select component_name from trackers_component where component_id = ?");
 
-		// Get Project name
-		projectPS = conn.prepareStatement("select project_name from trackers_project where project_id = ?");
+        // Get Project name
+        projectPS = conn.prepareStatement("select project_name from trackers_project where project_id = ?");
 
-		// Prepared Statement for profiles
-		profilePS = conn.prepareStatement("SELECT user_id, username, user_email FROM community_users WHERE user_id = ?");
+        // Prepared Statement for profiles
+        profilePS = conn.prepareStatement("SELECT user_id, username, user_email FROM community_users WHERE user_id = ?");
 
-		// Get comment by ticket id
-		// We get all ticket posts (and exclude the one for the ticket itself later)
-		// We do not import private tickets
+        // Get comment by ticket id
+        // We get all ticket posts (and exclude the one for the ticket itself later)
+        // We do not import private tickets
         commentPS = conn.prepareStatement("SELECT * FROM trackers_post WHERE ticket_id = ? AND post_private = 0 ORDER BY post_timestamp ASC");
 
-		// Ticket description
-		ticketDescriptionPS = conn.prepareStatement("SELECT p.* FROM trackers_ticket as t, trackers_post as p  WHERE t.ticket_id = ? AND p.post_id = t.post_id");
+        // Ticket description
+        ticketDescriptionPS = conn.prepareStatement("SELECT p.* FROM trackers_ticket as t, trackers_post as p  WHERE t.ticket_id = ? AND p.post_id = t.post_id");
     }
 
     private void closePreparedStatements() throws SQLException
@@ -404,7 +404,7 @@ public class BugzillaImportBean
                     createCommentAndDescription(bugId, issue);
                     // NOTE: this call has not been tested, we are waiting for test data, that is why it is surrounded
                     // in a conditional
-					// phpBB does not have a work history (hours worked on bugs)
+                    // phpBB does not have a work history (hours worked on bugs)
                     if (workHistory)
                     {
 //                        createWorkHistory(conn, bugId, issueFactory.getIssue(issue));
@@ -419,7 +419,7 @@ public class BugzillaImportBean
                     else
                     {
                         // NOTE: should not occur, i enabled issue linking for duplicates (Meik)
-						log("Issue links will not be imported from phpBB since issue linking is disabled in JIRA.");
+                        log("Issue links will not be imported from phpBB since issue linking is disabled in JIRA.");
                     }
 
                 }
@@ -444,7 +444,7 @@ public class BugzillaImportBean
 //        ImportUtils.closePS(linkDependsOnPrepStatement);
     }
 
-	private String getComponentName(final int componentId) throws SQLException
+    private String getComponentName(final int componentId) throws SQLException
     {
         componentPS.setInt(1, componentId);
         final ResultSet rs = componentPS.executeQuery();
@@ -503,13 +503,13 @@ public class BugzillaImportBean
 
         final StringBuffer environment = new StringBuffer();
 
-		String ticket_php = resultSet.getString("ticket_php");
-		String ticket_dbms = resultSet.getString("ticket_dbms");
+        String ticket_php = resultSet.getString("ticket_php");
+        String ticket_dbms = resultSet.getString("ticket_dbms");
 
-		if (ticket_php != null || ticket_dbms != null)
-		{
-	        environment.append("PHP Environment: ").append(ticket_php).append("\nDatabase: ").append(ticket_dbms);
-		}
+        if (ticket_php != null || ticket_dbms != null)
+        {
+            environment.append("PHP Environment: ").append(ticket_php).append("\nDatabase: ").append(ticket_dbms);
+        }
 
 /*        final String url = resultSet.getString("bug_file_loc");
         if (!"".equals(url))
@@ -708,36 +708,35 @@ public class BugzillaImportBean
         wfCurrentStep.store();
     }
 
-	// DONE
     private void createCommentAndDescription(final int bug_id, final GenericValue issue) throws Exception
     {
-		// Get description and description id for this ticket
-		String description = null;
-		int postid = 0;
+        // Get description and description id for this ticket
+        String description = null;
+        int postid = 0;
 
-		ticketDescriptionPS.setInt(1, bug_id);
+        ticketDescriptionPS.setInt(1, bug_id);
 
         final ResultSet DescriptionResultSet = ticketDescriptionPS.executeQuery();
         if (DescriptionResultSet.next())
         {
-			// @todo introduce new column for HTML? I do not think JIRA is able to parse BBCode. ;)
-			description = DescriptionResultSet.getString("post_text_wiki");
-			postid = DescriptionResultSet.getInt("post_id");
-		}
-		DescriptionResultSet.close();
+            // @todo introduce new column for HTML? I do not think JIRA is able to parse BBCode. ;)
+            description = DescriptionResultSet.getString("post_text_wiki");
+            postid = DescriptionResultSet.getInt("post_id");
+        }
+        DescriptionResultSet.close();
 
         commentPS.setInt(1, bug_id);
 
         final ResultSet resultSet = commentPS.executeQuery();
         while (resultSet.next())
         {
-			// Skip if the comment is the original description post_id
-			if (resultSet.getInt("post_id") == postid)
-			{
-				
-			}
-			else
-			{
+            // Skip if the comment is the original description post_id
+            if (resultSet.getInt("post_id") == postid)
+            {
+                
+            }
+            else
+            {
                 final User user = getUser(resultSet.getInt("user_id"));
 
                 /* check permissions first
@@ -786,7 +785,6 @@ public class BugzillaImportBean
      * @param bug_id bug id
      * @param issue  issue
      */
-	// DONE
     private void createChangeHistory(final int bug_id, final GenericValue issue)
     {
         // create a change group and change item for each issue imported to record the original phpBB id.
@@ -796,7 +794,6 @@ public class BugzillaImportBean
         ChangeLogUtils.createChangeGroup(importer, issue, issue, changeItems, true);
     }
 
-	// DONE
     private void createWatchers(final Connection conn) throws SQLException
     {
         log("\n\nImporting Watchers");
@@ -847,7 +844,6 @@ public class BugzillaImportBean
      * @return map of previously imported keys (old to new)
      * @throws GenericEntityException if cannot read from change items
      */
-	 // DONE
     protected Map retrieveImportedIssues() throws GenericEntityException
     {
         final Map previousKeys = new HashMap();
@@ -862,7 +858,6 @@ public class BugzillaImportBean
         return previousKeys;
     }
 
-	// DONE
     private void createComponents(final Connection conn) throws SQLException
     {
         int componentCount = 0;
@@ -907,7 +902,6 @@ public class BugzillaImportBean
         ImportUtils.closePS(preparedStatement);
     }
 
-	// DONE
     private String getComponentLead(final int defaultAssigneeId) throws SQLException
     {
         String componentLead = null;
@@ -917,7 +911,7 @@ public class BugzillaImportBean
         if (componentLeadResultSet.next())
         {
             componentLead = componentLeadResultSet.getString("username");
-			componentLead = StringEscapeUtils.unescapeHtml(componentLead);
+            componentLead = StringEscapeUtils.unescapeHtml(componentLead);
         }
         return componentLead;
     }
@@ -935,8 +929,7 @@ public class BugzillaImportBean
      * @return product name
      * @throws SQLException if reading from result set fails
      */
-	// DONE
-	private String getProjectName(final ResultSet resultSet, final boolean isPhpBBBug) throws SQLException
+    private String getProjectName(final ResultSet resultSet, final boolean isPhpBBBug) throws SQLException
     {
         String projectName;
         try
@@ -964,7 +957,6 @@ public class BugzillaImportBean
         return projectName;
     }
 
-	// DONE
     private boolean createComponent(final String projectName, final String componentName, final String componentLead, final String description)
     {
         final GenericValue project = getProject(projectName);
@@ -998,7 +990,6 @@ public class BugzillaImportBean
         }
     }
 
-	// DONE
     private void createVersions(final Connection conn) throws SQLException
     {
         log("\n\nImporting Versions from project " + selectedProjects + "\n");
@@ -1007,7 +998,6 @@ public class BugzillaImportBean
 //        createVersionFromBugsTable(conn);
     }
 
-	// DONE
     private void createVersionFromVersionTable(final Connection conn) throws SQLException
     {
         int count = 0;
@@ -1065,7 +1055,6 @@ public class BugzillaImportBean
      * @param coll collection of objects to comma separate
      * @return comma separated list of Strings of objects from the given collection
      */
-	// DONE
     public String commaSeparate(final Collection coll)
     {
         if (coll.size() == 0)
@@ -1085,7 +1074,6 @@ public class BugzillaImportBean
         return buf.toString();
     }
 
-	// DONE
     private boolean createVersion(final String project, final String versionName)
     {
         final Version existingVersion = versionManager.getVersion(getProject(project), versionName);
@@ -1113,8 +1101,7 @@ public class BugzillaImportBean
         }
     }
 
-	// DONE
-	private void createProjects(final String[] projectNames, final Connection conn) throws SQLException
+    private void createProjects(final String[] projectNames, final Connection conn) throws SQLException
     {
         int count = 0;
         log("\n\nImporting project(s) " + selectedProjects);
@@ -1152,7 +1139,6 @@ public class BugzillaImportBean
         ImportUtils.closePS(preparedStatement);
     }
 
-	// DONE
     private boolean createProject(final String project, final String description)
     {
         if (project == null)
@@ -1173,9 +1159,9 @@ public class BugzillaImportBean
             GenericValue newProject;
             try
             {
-				// @Deprecated
-				newProject = ProjectUtils.createProject(EasyMap.build("key", bugzillaMappingBean.getProjectKey(project), "lead",
-                    PHPBB_PROJECTS_LEADER_NAME, "name", project, "description", description));
+                // @Deprecated
+                newProject = ProjectUtils.createProject(EasyMap.build("key", bugzillaMappingBean.getProjectKey(project), "lead",
+                PHPBB_PROJECTS_LEADER_NAME, "name", project, "description", description));
 
                 //Add the default permission scheme for this project
                 permissionSchemeManager.addDefaultSchemeToProject(newProject);
@@ -1194,8 +1180,7 @@ public class BugzillaImportBean
         }
     }
 
-	// DONE
-	private void createUser(final int phpBBId) throws SQLException
+    private void createUser(final int phpBBId) throws SQLException
     {
         profilePS.setInt(1, phpBBId);
         final ResultSet resultSet = profilePS.executeQuery();
@@ -1208,7 +1193,6 @@ public class BugzillaImportBean
         resultSet.close();
     }
 
-	// DONE
     private int createUserFrom(final ResultSet resultSet) throws SQLException
     {
         int count = 0;
@@ -1216,18 +1200,18 @@ public class BugzillaImportBean
         String fullname;
         while (resultSet.next())
         {
-			// Username is our phpBB Username...
-			loginName = getUsernameFromPhpBBProfile(resultSet);
+            // Username is our phpBB Username...
+            loginName = getUsernameFromPhpBBProfile(resultSet);
             fullname = TextUtils.noNull(resultSet.getString("username")).trim();
 
-			loginName = StringEscapeUtils.unescapeHtml(loginName);
-			fullname = StringEscapeUtils.unescapeHtml(fullname);
+            loginName = StringEscapeUtils.unescapeHtml(loginName);
+            fullname = StringEscapeUtils.unescapeHtml(fullname);
 
             final int user_id = resultSet.getInt("user_id");
 
             boolean created;
-			// Do not create a password (null)
-			created = createUser(loginName, fullname, user_id, null);
+            // Do not create a password (null)
+            created = createUser(loginName, fullname, user_id, null);
 
             if (created)
             {
@@ -1246,11 +1230,10 @@ public class BugzillaImportBean
      * @return username
      * @throws SQLException if reading from result set fails
      */
-	// DONE
-	protected String getUsernameFromPhpBBProfile(final ResultSet phpBBProfileResultSet) throws SQLException
+    protected String getUsernameFromPhpBBProfile(final ResultSet phpBBProfileResultSet) throws SQLException
     {
 //        return TextUtils.noNull(phpBBProfileResultSet.getString("username")).toLowerCase().trim();
-		return phpBBProfileResultSet.getString("username");
+        return phpBBProfileResultSet.getString("username");
 
         // Alternatively, use the first part ('joe' in 'joe@company.com')
         //        String name = phpBBProfileResultSet.getString("username");
@@ -1260,7 +1243,6 @@ public class BugzillaImportBean
         //        return name;
     }
 
-	// DONE
     private boolean createUser(final String loginName, String fullname, final int phpBBUserId, final String password)
     {
         log("Importing User: " + loginName);
@@ -1271,8 +1253,8 @@ public class BugzillaImportBean
         try
         {
             final User user = UserUtils.getUser(loginName);
-			// User exists in JIRA
-			if (user != null)
+            // User exists in JIRA
+            if (user != null)
             {
                 log("\texists - Not imported");
                 userKeys.put(new Integer(phpBBUserId), user);
@@ -1281,15 +1263,15 @@ public class BugzillaImportBean
         }
         catch (final EntityNotFoundException e)
         {
-			// UserUtils.getUser() should have asked Crowd directly, therefore we must assume the user does not exists in the phpBB Directory
+            // UserUtils.getUser() should have asked Crowd directly, therefore we must assume the user does not exists in the phpBB Directory
             log("User: " + loginName + " not imported. Unable to find the user in Crowd Directory");
             return false;
 
-		
+        
 /*
-			log4jLog.debug("Did not find user: " + loginName + " so a new user will be created");
-			// We do not want to create a user, we use Crowd...
-			// If Crowd is used JIRA does not actually create the user, but we need a user object
+            log4jLog.debug("Did not find user: " + loginName + " so a new user will be created");
+            // We do not want to create a user, we use Crowd...
+            // If Crowd is used JIRA does not actually create the user, but we need a user object
             User user = userUtil.createUserNoEvent(
                    loginName,
                    password,
@@ -1298,8 +1280,8 @@ public class BugzillaImportBean
                 userKeys.put(new Integer(phpBBUserId), user);
                 return true;
 */
-			/*
-			try
+            /*
+            try
             {
                 // JRA-10393: if Jira is running with a user based license, the active user count will be
                 // recalculated every time a user is created. Depending on how many users there are in the system
@@ -1325,12 +1307,11 @@ public class BugzillaImportBean
                 log("User: " + loginName + " not imported. An error occurred. " + exception.getMessage());
                 return false;
             }
-			*/
+            */
         }
         return false;
     }
 
-	// DONE
     private void createAttachments(final Connection conn, final PreparedStatement attachPrepStatement, final int bug_id, final GenericValue issue) throws Exception
     {
         if (applicationProperties.getOption(APKeys.JIRA_OPTION_ALLOWATTACHMENTS))
@@ -1343,7 +1324,7 @@ public class BugzillaImportBean
                 resultSet = attachPrepStatement.executeQuery();
                 while (resultSet.next())
                 {
-					String fileName = resultSet.getString("attachment_title");
+                    String fileName = resultSet.getString("attachment_title");
                     if (fileName.lastIndexOf('\\') > -1)
                     {
                         fileName = fileName.substring(fileName.lastIndexOf('\\') + 1);
@@ -1354,7 +1335,7 @@ public class BugzillaImportBean
                         fileName = fileName.substring(fileName.lastIndexOf('/') + 1);
                     }
 
-					log("Importing attachment for bug " + bug_id + ".");
+                    log("Importing attachment for bug " + bug_id + ".");
 
                     byte[] fileBytes;
 /*                    try
@@ -1369,18 +1350,18 @@ public class BugzillaImportBean
                         attachmentRS.next();
                         fileBytes = attachmentRS.getBytes("thedata");
                         attachmentRS.close();
-						resultSet.close();
-						return;
+                        resultSet.close();
+                        return;
                     }
-					*/
+                    */
 
                     final int submitterId = resultSet.getInt("user_id");
                     final Attachment attachment = attachmentManager.createAttachment(issue, getUser(submitterId), resultSet.getString("mimetype"),
                         fileName, new Long(fileBytes.length), null, resultSet.getTimestamp("created_ts"));
-						
-					// UtilDateTime.nowTimestamp());
+                        
+                    // UtilDateTime.nowTimestamp());
 
-					//we need to set the created date back to when it was created in the original system.
+                    //we need to set the created date back to when it was created in the original system.
                     attachment.getGenericValue().set("created", resultSet.getTimestamp("created_ts"));
                     attachment.store();
 
@@ -1492,7 +1473,6 @@ public class BugzillaImportBean
      *
      * @throws GenericEntityException if database read or write fails
      */
-	 // DONE
     private void rewriteBugLinks() throws GenericEntityException
     {
         log("Rewriting bug links for " + importedKeys.size() + " issues.");
@@ -1544,7 +1524,6 @@ public class BugzillaImportBean
      * @param parentIssueKey Issue this text came from (purely for logging).
      * @return str, with links rewritten.
      */
-	 // DONE
     public String rewriteBugLinkInText(final String str, final String parentIssueKey)
     {
         Pattern pattern = null;
@@ -1643,38 +1622,38 @@ public class BugzillaImportBean
         return user;
     }
 
-	private String getProjectKey(final String name, int keylength) throws GenericEntityException
-	{
-		String potentialKey;
-		if (name.length() < keylength)
-		{
-			potentialKey = name + generatePaddingString(keylength - name.length());
-		}
-		else
-		{
-			potentialKey = name.substring(0, keylength);
-		}
+    private String getProjectKey(final String name, int keylength) throws GenericEntityException
+    {
+        String potentialKey;
+        if (name.length() < keylength)
+        {
+            potentialKey = name + generatePaddingString(keylength - name.length());
+        }
+        else
+        {
+            potentialKey = name.substring(0, keylength);
+        }
 
-		if (projectManager.getProjectObjByKey(potentialKey) != null)
-		{
-			return getProjectKey(name, ++keylength);
-		}
-		else
-		{
-			return potentialKey;
-		}
-	}
+        if (projectManager.getProjectObjByKey(potentialKey) != null)
+        {
+            return getProjectKey(name, ++keylength);
+        }
+        else
+        {
+            return potentialKey;
+        }
+    }
 
-	public String getProjectKey(final String name) throws GenericEntityException
-	{
-		final Project project = projectManager.getProjectObjByName(name);
-		if (project == null)
-		{
-			return getProjectKey(name.toUpperCase(), 3); //minimum key length of 3
-		}
+    public String getProjectKey(final String name) throws GenericEntityException
+    {
+        final Project project = projectManager.getProjectObjByName(name);
+        if (project == null)
+        {
+            return getProjectKey(name.toUpperCase(), 3); //minimum key length of 3
+        }
 
-		return project.getKey();
-	}
+        return project.getKey();
+    }
 
     private String generatePaddingString(final int length)
     {
@@ -1714,7 +1693,7 @@ public class BugzillaImportBean
         }
     }
 
-	/**
+    /**
      * By examining the schema, determines if we're importing from <=2.16 or 2.17+
      *
     * @param conn connection
@@ -1723,15 +1702,14 @@ public class BugzillaImportBean
      */
     public static boolean isOldBugzilla(final Connection conn)
     {
-		return false;
-	}
+        return false;
+    }
 
-	public String getImportLog()
+    public String getImportLog()
     {
         return importLog.toString();
     }
 
-	// DONE
     public static List getAllBugzillaProjects(BugzillaConnectionBean connectionBean) throws java.sql.SQLException
     {
         PreparedStatement preparedStatement = null;
@@ -1742,7 +1720,7 @@ public class BugzillaImportBean
             List projects = new ArrayList();
             while (resultSet.next())
             {
-				// Solved initial bug in phpBB importer - column_name wrong
+                // Solved initial bug in phpBB importer - column_name wrong
                 String project = resultSet.getString("project_name");
                 projects.add(project);
             }
@@ -1764,7 +1742,6 @@ public class BugzillaImportBean
         }
     }
 
-	// DONE
     private void createOrFindCustomFields() throws GenericEntityException
     {
         final CustomFieldType numericFieldCFType = customFieldManager.getCustomFieldType(CreateCustomField.FIELD_TYPE_PREFIX + BUGZILLA_ID_TYPE);
@@ -1862,7 +1839,7 @@ public class BugzillaImportBean
 
         public String getProjectKey(String project);
 
-		public String getPriority(String originalPriority);
+        public String getPriority(String originalPriority);
 
         public String getResolution(String originalResolution);
 
@@ -1876,95 +1853,95 @@ public class BugzillaImportBean
     }
 
 
-public static abstract class DefaultBugzillaMappingBean implements BugzillaMappingBean
-{
-	private static Map priorityMap = new HashMap();
-	private static Map resolutionMap = new HashMap();
-	private static Map statusMap = new HashMap();
-	private static Map wfStepMap = new HashMap();
-	private static Map wfStatusMap = new HashMap();
+    public static abstract class DefaultBugzillaMappingBean implements BugzillaMappingBean
+    {
+    private static Map priorityMap = new HashMap();
+    private static Map resolutionMap = new HashMap();
+    private static Map statusMap = new HashMap();
+    private static Map wfStepMap = new HashMap();
+    private static Map wfStatusMap = new HashMap();
 
-	static
-	{
-		// phpBB severities mapping to JIRA priorities
-		priorityMap.put("severe", "" + IssueFieldConstants.CRITICAL_PRIORITY_ID);
-		priorityMap.put("possibly invalid", "" + IssueFieldConstants.TRIVIAL_PRIORITY_ID);
+    static
+    {
+        // phpBB severities mapping to JIRA priorities
+        priorityMap.put("severe", "" + IssueFieldConstants.CRITICAL_PRIORITY_ID);
+        priorityMap.put("possibly invalid", "" + IssueFieldConstants.TRIVIAL_PRIORITY_ID);
 
-		// phpBB resolutions mapping to JIRA resolutions
-		resolutionMap.put("", null);
-		resolutionMap.put("will not fix", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
-		resolutionMap.put("duplicate", "" + IssueFieldConstants.DUPLICATE_RESOLUTION_ID);
-		resolutionMap.put("unreproducible", "" + IssueFieldConstants.CANNOTREPRODUCE_RESOLUTION_ID);
-		resolutionMap.put("support request", "" + IssueFieldConstants.INCOMPLETE_RESOLUTION_ID);
-		resolutionMap.put("fix completed in svn", "" + IssueFieldConstants.FIXED_RESOLUTION_ID);
-		resolutionMap.put("already fixed", "" + IssueFieldConstants.FIXED_RESOLUTION_ID);
-		resolutionMap.put("not a bug", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
+        // phpBB resolutions mapping to JIRA resolutions
+        resolutionMap.put("", null);
+        resolutionMap.put("will not fix", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
+        resolutionMap.put("duplicate", "" + IssueFieldConstants.DUPLICATE_RESOLUTION_ID);
+        resolutionMap.put("unreproducible", "" + IssueFieldConstants.CANNOTREPRODUCE_RESOLUTION_ID);
+        resolutionMap.put("support request", "" + IssueFieldConstants.INCOMPLETE_RESOLUTION_ID);
+        resolutionMap.put("fix completed in svn", "" + IssueFieldConstants.FIXED_RESOLUTION_ID);
+        resolutionMap.put("already fixed", "" + IssueFieldConstants.FIXED_RESOLUTION_ID);
+        resolutionMap.put("not a bug", "" + IssueFieldConstants.WONTFIX_RESOLUTION_ID);
 
-		resolutionMap.put("new", null);
-		resolutionMap.put("reviewed", null);
-		resolutionMap.put("review later", null);
-		resolutionMap.put("awaiting information", null);
-		resolutionMap.put("awaiting team input", null);
-		resolutionMap.put("pending", null);
-		resolutionMap.put("fix in progress", null);
+        resolutionMap.put("new", null);
+        resolutionMap.put("reviewed", null);
+        resolutionMap.put("review later", null);
+        resolutionMap.put("awaiting information", null);
+        resolutionMap.put("awaiting team input", null);
+        resolutionMap.put("pending", null);
+        resolutionMap.put("fix in progress", null);
 
-		// phpBB status mapping to JIRA status
-		statusMap.put("new", "" + IssueFieldConstants.OPEN_STATUS_ID);
+        // phpBB status mapping to JIRA status
+        statusMap.put("new", "" + IssueFieldConstants.OPEN_STATUS_ID);
 
-		statusMap.put("will not fix", "" + IssueFieldConstants.CLOSED_STATUS_ID);
-		statusMap.put("duplicate", "" + IssueFieldConstants.CLOSED_STATUS_ID);
-		statusMap.put("unreproducible", "" + IssueFieldConstants.CLOSED_STATUS_ID);
-		statusMap.put("support request", "" + IssueFieldConstants.CLOSED_STATUS_ID);
-		statusMap.put("fix completed in svn", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
-		statusMap.put("already fixed", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
-		statusMap.put("not a bug", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+        statusMap.put("will not fix", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+        statusMap.put("duplicate", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+        statusMap.put("unreproducible", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+        statusMap.put("support request", "" + IssueFieldConstants.CLOSED_STATUS_ID);
+        statusMap.put("fix completed in svn", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
+        statusMap.put("already fixed", "" + IssueFieldConstants.RESOLVED_STATUS_ID);
+        statusMap.put("not a bug", "" + IssueFieldConstants.CLOSED_STATUS_ID);
 
-		statusMap.put("reviewed", "" + IssueFieldConstants.OPEN_STATUS_ID);
-		statusMap.put("review later", "" + IssueFieldConstants.OPEN_STATUS_ID);
-		statusMap.put("awaiting information", "" + IssueFieldConstants.OPEN_STATUS_ID);
-		statusMap.put("awaiting team input", "" + IssueFieldConstants.OPEN_STATUS_ID);
-		statusMap.put("pending", "" + IssueFieldConstants.OPEN_STATUS_ID);
-		statusMap.put("fix in progress", "" + IssueFieldConstants.OPEN_STATUS_ID);
+        statusMap.put("reviewed", "" + IssueFieldConstants.OPEN_STATUS_ID);
+        statusMap.put("review later", "" + IssueFieldConstants.OPEN_STATUS_ID);
+        statusMap.put("awaiting information", "" + IssueFieldConstants.OPEN_STATUS_ID);
+        statusMap.put("awaiting team input", "" + IssueFieldConstants.OPEN_STATUS_ID);
+        statusMap.put("pending", "" + IssueFieldConstants.OPEN_STATUS_ID);
+        statusMap.put("fix in progress", "" + IssueFieldConstants.OPEN_STATUS_ID);
 
-		// workflow Mappings
-		wfStepMap.put("1", new Integer("1"));
-		wfStepMap.put("2", new Integer("2"));
-		wfStepMap.put("3", new Integer("3"));
-		wfStepMap.put("4", new Integer("5"));
-		wfStepMap.put("5", new Integer("4"));
-		wfStepMap.put("6", new Integer("6"));
+        // workflow Mappings
+        wfStepMap.put("1", new Integer("1"));
+        wfStepMap.put("2", new Integer("2"));
+        wfStepMap.put("3", new Integer("3"));
+        wfStepMap.put("4", new Integer("5"));
+        wfStepMap.put("5", new Integer("4"));
+        wfStepMap.put("6", new Integer("6"));
 
-		wfStatusMap.put("1", "Open");
-		wfStatusMap.put("3", "In Progress");
-		wfStatusMap.put("4", "Reopened");
-		wfStatusMap.put("5", "Resolved");
-		wfStatusMap.put("6", "Closed");
-	}
+        wfStatusMap.put("1", "Open");
+        wfStatusMap.put("3", "In Progress");
+        wfStatusMap.put("4", "Reopened");
+        wfStatusMap.put("5", "Resolved");
+        wfStatusMap.put("6", "Closed");
+    }
 
-	public String getPriority(final String originalPriority)
-	{
-		return (String) priorityMap.get(originalPriority);
-	}
+    public String getPriority(final String originalPriority)
+    {
+        return (String) priorityMap.get(originalPriority);
+    }
 
-	public String getResolution(final String originalResolution)
-	{
-		return (String) resolutionMap.get(originalResolution);
-	}
+    public String getResolution(final String originalResolution)
+    {
+        return (String) resolutionMap.get(originalResolution);
+    }
 
-	public String getStatus(final String originalStatus)
-	{
-		return (String) statusMap.get(originalStatus);
-	}
+    public String getStatus(final String originalStatus)
+    {
+        return (String) statusMap.get(originalStatus);
+    }
 
-	public Integer getWorkflowStep(final String originalWorkflowStep)
-	{
-		return (Integer) wfStepMap.get(originalWorkflowStep);
-	}
+    public Integer getWorkflowStep(final String originalWorkflowStep)
+    {
+        return (Integer) wfStepMap.get(originalWorkflowStep);
+    }
 
-	public String getWorkflowStatus(final String originalWorkflowStatus)
-	{
-		return (String) wfStatusMap.get(originalWorkflowStatus);
-	}
+    public String getWorkflowStatus(final String originalWorkflowStatus)
+    {
+        return (String) wfStatusMap.get(originalWorkflowStatus);
+    }
 }
 
 /**
@@ -1972,121 +1949,119 @@ public static abstract class DefaultBugzillaMappingBean implements BugzillaMappi
 */
 private class UserNameCollator
 {
-	private final String projectIds;
-	private final Connection conn;
+    private final String projectIds;
+    private final Connection conn;
 
-	// DONE
-	UserNameCollator(final String[] projectNames, final Connection conn) throws SQLException
-	{
-		this.conn = conn;
-		PreparedStatement preparedStatement = null;
-		ResultSet rs = null;
-		try
-		{
-			preparedStatement = conn.prepareStatement("Select project_id from trackers_project where project_name in (" + ImportUtils.getSQLTokens(projectNames) + ") AND tracker_id = 3");
-			for (int i = 0; i < projectNames.length; i++)
-			{
-				final String projectName = projectNames[i];
-				preparedStatement.setString(i + 1, projectName);
-			}
+    UserNameCollator(final String[] projectNames, final Connection conn) throws SQLException
+    {
+        this.conn = conn;
+        PreparedStatement preparedStatement = null;
+        ResultSet rs = null;
+        try
+        {
+            preparedStatement = conn.prepareStatement("Select project_id from trackers_project where project_name in (" + ImportUtils.getSQLTokens(projectNames) + ") AND tracker_id = 3");
+            for (int i = 0; i < projectNames.length; i++)
+            {
+                final String projectName = projectNames[i];
+                preparedStatement.setString(i + 1, projectName);
+            }
 
-			rs = preparedStatement.executeQuery();
-			final StringBuffer buffer = new StringBuffer();
-			int i = 0;
-			while (rs.next())
-			{
-				if (i++ > 0)
-				{
-					buffer.append(", ");
-				}
-				buffer.append(rs.getLong(1));
-			}
-			projectIds = buffer.toString();
-		}
-		finally
-		{
-			ImportUtils.close(preparedStatement, rs);
-		}
-	} // end ctor
+            rs = preparedStatement.executeQuery();
+            final StringBuffer buffer = new StringBuffer();
+            int i = 0;
+            while (rs.next())
+            {
+                if (i++ > 0)
+                {
+                    buffer.append(", ");
+                }
+                buffer.append(rs.getLong(1));
+            }
+            projectIds = buffer.toString();
+        }
+        finally
+        {
+            ImportUtils.close(preparedStatement, rs);
+        }
+    } // end ctor
 
-	// DONE
-	public Set getAllUsers() throws SQLException
-	{
-		final Set result = new HashSet();
+    public Set getAllUsers() throws SQLException
+    {
+        final Set result = new HashSet();
 
-		/*issue reporters
-		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs AS b ON ( b.reporter = prof.userid) JOIN products AS p ON (b.product_id = p.id) WHERE p.id IN (" + projectIds + ") GROUP BY 1"));
+        /*issue reporters
+        result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs AS b ON ( b.reporter = prof.userid) JOIN products AS p ON (b.product_id = p.id) WHERE p.id IN (" + projectIds + ") GROUP BY 1"));
 
-		// issue assignees
-		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs AS b ON ( b.assigned_to = prof.userid) JOIN products AS p ON (b.product_id = p.id) WHERE p.id IN (" + projectIds + ") GROUP BY 1"));
+        // issue assignees
+        result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs AS b ON ( b.assigned_to = prof.userid) JOIN products AS p ON (b.product_id = p.id) WHERE p.id IN (" + projectIds + ") GROUP BY 1"));
 
-		// commenters
-		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN longdescs AS l ON ( l.who = prof.userid) JOIN bugs AS b ON (l.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
+        // commenters
+        result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN longdescs AS l ON ( l.who = prof.userid) JOIN bugs AS b ON (l.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
 
-		// voters
-//		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN votes AS v ON ( v.who = prof.userid) JOIN bugs AS b ON (v.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
+        // voters
+    //		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN votes AS v ON ( v.who = prof.userid) JOIN bugs AS b ON (v.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
 
-		// watchers
-		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN cc AS c ON ( c.who = prof.userid) JOIN bugs AS b ON (c.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
+        // watchers
+        result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN cc AS c ON ( c.who = prof.userid) JOIN bugs AS b ON (c.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
 
-		// attachers
-		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN attachments AS a ON ( a.submitter_id = prof.userid) JOIN bugs AS b ON (a.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
+        // attachers
+        result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN attachments AS a ON ( a.submitter_id = prof.userid) JOIN bugs AS b ON (a.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE p. id IN (" + projectIds + ") GROUP BY 1"));
 
-		// workers
-		result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs_activity AS ba ON ( ba.who = prof.userid) JOIN bugs AS b ON (ba.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE ba.fieldid = 45 AND p.id IN (" + projectIds + ") GROUP BY 1"));
-*/
+        // workers
+        result.addAll(getUsers("SELECT prof.login_name, prof.realname FROM profiles AS prof JOIN bugs_activity AS ba ON ( ba.who = prof.userid) JOIN bugs AS b ON (ba.bug_id = b.bug_id) JOIN products AS p ON(b.product_id = p.id) WHERE ba.fieldid = 45 AND p.id IN (" + projectIds + ") GROUP BY 1"));
+    */
 
-		// Ticket History
-		// result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_history AS h ON (h.user_id = u.user_id) JOIN trackers_ticket as t ON (h.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+        // Ticket History
+        // result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_history AS h ON (h.user_id = u.user_id) JOIN trackers_ticket as t ON (h.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
-		// Trackers Posts
-		result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_post AS p ON (p.user_id = u.user_id AND p.post_private = 0) JOIN trackers_ticket as t ON (p.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+        // Trackers Posts
+        result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_post AS p ON (p.user_id = u.user_id AND p.post_private = 0) JOIN trackers_ticket as t ON (p.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
-		// Watchers/Project
-		result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_project_watch AS pw ON (pw.user_id = u.user_id) WHERE pw.project_id IN (" + projectIds + ") GROUP BY 1"));
+        // Watchers/Project
+        result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_project_watch AS pw ON (pw.user_id = u.user_id) WHERE pw.project_id IN (" + projectIds + ") GROUP BY 1"));
 
-		// Watchers/Ticket
-		result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_ticket_watch AS tw ON (tw.user_id = u.user_id) JOIN trackers_ticket as t ON (tw.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
-		
-		// ticket reporters
-		result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_ticket AS t ON (t.user_id = u.user_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+        // Watchers/Ticket
+        result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_ticket_watch AS tw ON (tw.user_id = u.user_id) JOIN trackers_ticket as t ON (tw.ticket_id = t.ticket_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+        
+        // ticket reporters
+        result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_ticket AS t ON (t.user_id = u.user_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
-		// Ticket assignees
-		result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_ticket AS t ON (t.assigned_user = u.user_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
+        // Ticket assignees
+        result.addAll(getUsers("SELECT u.username, u.user_email FROM community_users AS u JOIN trackers_ticket AS t ON (t.assigned_user = u.user_id) WHERE t.project_id IN (" + projectIds + ") GROUP BY 1"));
 
 
-		return result;
-	}
+        return result;
+    }
 
-	private Set getUsers(final String sql) throws SQLException
-	{
-		PreparedStatement ps = null;
-		ResultSet rs = null;
-		try
-		{
-			ps = conn.prepareStatement(sql);
-			rs = ps.executeQuery();
-			final Set result = new HashSet();
-			while (rs.next())
-			{
-				result.add(new ExternalUser(StringEscapeUtils.unescapeHtml(rs.getString(1)), StringEscapeUtils.unescapeHtml(rs.getString(1)), StringEscapeUtils.unescapeHtml(rs.getString(2))));
-			}
-			return result;
-		}
-		finally
-		{
-			ImportUtils.close(ps, rs);
-		}
-	}
-}
+    private Set getUsers(final String sql) throws SQLException
+    {
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try
+        {
+            ps = conn.prepareStatement(sql);
+            rs = ps.executeQuery();
+            final Set result = new HashSet();
+            while (rs.next())
+            {
+                result.add(new ExternalUser(StringEscapeUtils.unescapeHtml(rs.getString(1)), StringEscapeUtils.unescapeHtml(rs.getString(1)), StringEscapeUtils.unescapeHtml(rs.getString(2))));
+            }
+            return result;
+        }
+        finally
+        {
+            ImportUtils.close(ps, rs);
+        }
+    }
+    }
 
-	/**
-	 * Returns an unmodifiable set of issue keys that have summaries longer that acceptable by JIRA
-	 *
-	 * @return an unmodifiable set of issue keys as Strings
-	 */
-	public Set /* <String> */getTruncSummaryIssueKeys()
-	{
-		return Collections.unmodifiableSet(truncSummaryIssueKeys);
-	}
+    /**
+     * Returns an unmodifiable set of issue keys that have summaries longer that acceptable by JIRA
+     *
+     * @return an unmodifiable set of issue keys as Strings
+     */
+    public Set /* <String> */getTruncSummaryIssueKeys()
+    {
+        return Collections.unmodifiableSet(truncSummaryIssueKeys);
+    }
 }
