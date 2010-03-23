@@ -230,7 +230,6 @@ public class BugzillaImportBean
      * @param importer            User performing the import operation
      * @throws Exception if something goes wrong
      */
-	 // DONE
     public void create(final BugzillaMappingBean bugzillaMappingBean, final BugzillaConnectionBean connectionBean, final boolean enableNotifications, final boolean reuseExistingUsers, final boolean onlyNewIssues, final boolean reindex, final boolean workHistory, final String[] projectNames, final User importer) throws Exception
     {
         importLog = new StringBuffer(1024 * 30);
@@ -348,13 +347,12 @@ public class BugzillaImportBean
         {
             commentPS.close();
         }
-		if (ticketDescriptionPS != null)
-		{
-			ticketDescriptionPS.close();
-		}
+        if (ticketDescriptionPS != null)
+        {
+            ticketDescriptionPS.close();
+        }
     }
 
-	// DONE
     private void createIssues(final Connection conn) throws Exception
     {
         int count = 0;
@@ -363,23 +361,20 @@ public class BugzillaImportBean
         // use the changeItem importLog to retrieve the list of issues previously imported from phpBB
         previouslyImportedKeys = retrieveImportedIssues();
 
-        String sql = "SELECT t.*, s.severity_name, v.version_name, st.status_name FROM (trackers_ticket t, trackers_version v, trackers_status as st) LEFT JOIN trackers_severity s ON (s.severity_id = t.severity_id) where st.status_id = t.status_id AND t.version_id = v.version_id AND t.ticket_private = 0 AND t.project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ORDER BY t.ticket_id ASC ";
+        String sql = "SELECT t.*, s.severity_name, v.version_name, v2.version_name as fixed_in_version, st.status_name FROM (trackers_ticket t, trackers_version v, trackers_status as st) LEFT JOIN trackers_severity s ON (s.severity_id = t.severity_id) LEFT JOIN trackers_version v2 ON (t.version_fixed = v2.version_id) where st.status_id = t.status_id AND t.version_id = v.version_id AND t.ticket_private = 0 AND t.project_id in (" + commaSeparate(projectToPhpBBIdMap.values()) + ") ORDER BY t.ticket_id ASC ";
 
         final PreparedStatement preparedStatement = conn.prepareStatement(sql);
         final ResultSet resultSet = preparedStatement.executeQuery();
         importedKeys = new HashMap();
 
-		// ADD mimetype and attachment_data to table...
-		final PreparedStatement attachPrepStatement = conn.prepareStatement("SELECT a.attachment_id, a.attachment_size, a.attachment_title, a.mimetype, a.attachment_data, p.user_id, p.created_ts FROM trackers_attachment as a, trackers_post as p WHERE a.attachment_private = 0 AND a.post_id = p.post_id AND p.ticket_id = ? AND p.post_private = 0 ORDER BY a.attachment_id ASC");
+        // ADD mimetype and attachment_data to table...
+        final PreparedStatement attachPrepStatement = conn.prepareStatement("SELECT a.attachment_id, a.attachment_size, a.attachment_title, a.mimetype, a.attachment_data, p.user_id, p.created_ts FROM trackers_attachment as a, trackers_post as p WHERE a.attachment_private = 0 AND a.post_id = p.post_id AND p.ticket_id = ? AND p.post_private = 0 ORDER BY a.attachment_id ASC");
 
-//		final PreparedStatement linkDependsOnPrepStatement = conn.prepareStatement("SELECT dependson FROM dependencies WHERE blocked = ?");
-//        final PreparedStatement linkBlocksPrepStatement = conn.prepareStatement("SELECT blocked FROM dependencies WHERE dependson = ?");
-		
-		// Ticket 'dupe' is a duplicate of ticket 'dupe_of' - inward
-		final PreparedStatement linkDuplicatesStatement = conn.prepareStatement("SELECT ticket_id as dupe FROM trackers_ticket WHERE duplicate_id = ? AND duplicate_id > 0");
+        // Ticket 'dupe' is a duplicate of ticket 'dupe_of' - inward
+        final PreparedStatement linkDuplicatesStatement = conn.prepareStatement("SELECT ticket_id as dupe FROM trackers_ticket WHERE duplicate_id = ? AND duplicate_id > 0");
 
-		// Ticket 'dupe_of' duplicates Ticket 'dupe' - outward
-		final PreparedStatement linkDuplicatedOfStatement = conn.prepareStatement("SELECT duplicate_id as dupe_of FROM trackers_ticket WHERE ticket_id = ? AND duplicate_id > 0");
+        // Ticket 'dupe_of' duplicates Ticket 'dupe' - outward
+        final PreparedStatement linkDuplicatedOfStatement = conn.prepareStatement("SELECT duplicate_id as dupe_of FROM trackers_ticket WHERE ticket_id = ? AND duplicate_id > 0");
 
         final IssueLinkType dependencyLinkType = createOrFindLinkType("Dependency", "depends on", "blocks");
         final IssueLinkType duplicateLinkType = createOrFindLinkType("Duplicate", "duplicates", "is duplicated by");
@@ -389,7 +384,7 @@ public class BugzillaImportBean
         {
             final int bugId = resultSet.getInt("ticket_id");
 
-			if (!onlyNewIssues || !previouslyImportedKeys.containsKey(new Integer(resultSet.getInt("ticket_id"))))
+            if (!onlyNewIssues || !previouslyImportedKeys.containsKey(new Integer(resultSet.getInt("ticket_id"))))
             {
                 log("Importing Ticket ID " + bugId);
 
@@ -449,7 +444,6 @@ public class BugzillaImportBean
 //        ImportUtils.closePS(linkDependsOnPrepStatement);
     }
 
-	// DONE
 	private String getComponentName(final int componentId) throws SQLException
     {
         componentPS.setInt(1, componentId);
@@ -460,7 +454,6 @@ public class BugzillaImportBean
         return name;
     }
 
-	// DONE
     private GenericValue createIssue(final ResultSet resultSet, final String projectName, final String componentName) throws IndexException, SQLException, GenericEntityException, CreateException
     {
         final Map fields = new HashMap();
@@ -468,12 +461,12 @@ public class BugzillaImportBean
         issueObject.setProject(getProject(projectName));
         issueObject.setReporter(getUser(resultSet.getInt("user_id")));
 
-		final int assignedUser = resultSet.getInt("assigned_user");
+        final int assignedUser = resultSet.getInt("assigned_user");
 
-		if (assignedUser > 0)
-		{
-			issueObject.setAssignee(getUser(assignedUser));
-		}
+        if (assignedUser > 0)
+        {
+            issueObject.setAssignee(getUser(assignedUser));
+        }
 
 /*        if (resultSet.getString("bug_severity").equals("enhancement"))
         {
@@ -528,8 +521,8 @@ public class BugzillaImportBean
 
         // setup the associations with components/versions
         final String version = resultSet.getString("version_name");
-//        final String fixversion = resultSet.getString("target_milestone");
-        createVersionComponentAssociations(issueObject, projectName, version, componentName);
+        final String fixversion = resultSet.getString("fixed_in_version");
+        createVersionComponentAssociations(issueObject, projectName, version, componentName, fixversion);
 
         // NOTE: this call has not been tested, we are waiting for test data, that is why it is surrounded
         // in a conditional
@@ -657,9 +650,10 @@ public class BugzillaImportBean
      * @param component  component
      * @param fixVersion fix version
      */
-    private void createVersionComponentAssociations(final MutableIssue issue, final String project, final String version, final String component)
+    private void createVersionComponentAssociations(final MutableIssue issue, final String project, final String version, final String component, final String fixVersion)
     {
         final Version verKey = getVersion(project + ":" + version);
+        final Version fixverKey = getVersion(project + ":" + fixVersion);
         if (verKey != null)
         {
             final Version affectsVersion = versionManager.getVersion(verKey.getLong("id"));
@@ -671,6 +665,16 @@ public class BugzillaImportBean
             {
                 log4jLog.error("Could not find version '" + project + ":" + version + "' to associate with issue " + issue);
             }
+        }
+
+        if (fixverKey != null)
+        {
+            final Version fixVer = versionManager.getVersion(fixverKey.getLong("id"));
+            issue.setFixVersions(EasyList.build(fixVer));
+        }
+        else
+        {
+            // Ignore, no fix present...
         }
 
         final GenericValue comp = getComponent(project + ":" + component);
