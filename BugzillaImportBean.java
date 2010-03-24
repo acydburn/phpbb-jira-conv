@@ -757,8 +757,10 @@ public class BugzillaImportBean
                     if (resultSet.getInt("post_private") == 1)
                     {
                         // Private post only visible by the developers role...
-                        final DefaultProjectRoleManager ProjectRole = null;
-                        commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, ProjectRole.getProjectRole("Developers").getId(), resultSet.getTimestamp("created_ts"), resultSet.getTimestamp("created_ts"), false, false);
+                        // final DefaultProjectRoleManager ProjectRole = null;
+                        // commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, ProjectRole.getProjectRole("Developers").getId(), resultSet.getTimestamp("created_ts"), resultSet.getTimestamp("created_ts"), false, false);
+                        final long RoleId = (long) 10001;
+                        commentManager.create(issueFactory.getIssue(issue), author, author, resultSet.getString("post_text_wiki"), null, RoleId, resultSet.getTimestamp("created_ts"), resultSet.getTimestamp("created_ts"), false, false);
                     }
                     else
                     {
